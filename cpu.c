@@ -339,17 +339,6 @@ void eval_H_flag(uint8_t target, uint8_t operand, bool sub)
 
 void eval_H_flag_16(uint16_t target, uint16_t operand)
 {
-	// bool h;
-	// uint16_t temp = target + operand;
-	// if (operand >= 0)
-	// {
-	// 	h = ((target & 0xFFF) + (operand & 0xFFF)) > 0xFFF;
-	// }
-	// else
-	// {
-	// 	h = (temp & 0xFFF) > (target & 0xFFF);
-	// }
-
 	if (((target & 0xFFF) + (operand & 0xFFF)) > 0xFFF)
 	{
 		cpu.af.f |= FLAG_H;
