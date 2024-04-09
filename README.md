@@ -1,6 +1,6 @@
 # gbc-emulator
 
-A "Work in Progress" Gamboy Color Emulator
+A "Work in Progress" Gameboy Color Emulator
 
 * `cpu.c` - Implementation of sm83 cpu.
 * `test_cpu.py` - Using cpu-tests of https://github.com/adtennant/sm83-test-data to debug and verify the cpu.
