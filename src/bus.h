@@ -58,6 +58,8 @@
  *---------------------------------------------------------------------*/
 void bus_init(void);
 void bus_tick(void);
+void bus_stop_instr_cb(void);
+void bus_HBlank_cb(void);
 uint8_t bus_get_memory(uint16_t addr);
 void bus_set_memory(uint16_t addr, uint8_t val);
 bool bus_init_memory(const char *filename);

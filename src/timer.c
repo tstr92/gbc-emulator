@@ -60,7 +60,6 @@ static uint8_t TAC = 0;
 /*---------------------------------------------------------------------*
  *  public functions                                                   *
  *---------------------------------------------------------------------*/
-/* internal: call this with every clock tick */
 void gbc_timer_tick(void)
 {
     static const uint32_t TAC_CLKSEL_LUT[4] = {(256 * 4), (4 * 4), (16 * 4), (64 * 4)};
@@ -93,7 +92,6 @@ void gbc_timer_diva_reset(void)
     DIVA = 0;
 }
 
-/* internal: only call this for address 0xFF04 - 0xFF07 */
 uint8_t gbc_timer_get_memory(uint16_t addr)
 {
     uint8_t ret;
@@ -134,7 +132,6 @@ uint8_t gbc_timer_get_memory(uint16_t addr)
     return ret;
 }
 
-/* internal: only call this for address 0xFF01 - 0xFF02 */
 void gbc_timer_set_memory(uint16_t addr, uint8_t val)
 {
     switch (addr)

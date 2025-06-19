@@ -1,3 +1,19 @@
+
+/*---------------------------------------------------------------------*
+ *                                                                     *
+ *                         SM83 Memory Bus                             *
+ *                                                                     *
+ *                                                                     *
+ *       project: Gameboy Color Emulator                               *
+ *   module name: main.c                                               *
+ *        author: tstr92                                               *
+ *          date: 2025-04-27                                           *
+ *                                                                     *
+ *---------------------------------------------------------------------*/
+
+/*---------------------------------------------------------------------*
+ *  include files                                                      *
+ *---------------------------------------------------------------------*/
 #define SDL_MAIN_HANDLED
 #include <SDL2/SDL.h>
 #include <stdio.h>
@@ -6,13 +22,24 @@
 #include <math.h>
 #include "emulator.h"
 
-#define TITLE "Tibors Gameboy Emulator"
+/*---------------------------------------------------------------------*
+ *  local definitions                                                  *
+ *---------------------------------------------------------------------*/
+#define TITLE "Tib's GBC Emul"
 
-#define WIDTH 800
-#define HEIGHT 600
+#define SCALING_FACTOR 2
+#define WIDTH (160 * SCALING_FACTOR)
+#define HEIGHT (144 * SCALING_FACTOR)
 
 #define SAMPLE_RATE 32768
-#define BUFFER_SIZE 549
+#define BUFFER_SIZE 550
+
+#define USE_PRINTF 0
+#if (0 != USE_PRINTF)
+#define debug_printf(fmt, ...) printf(fmt, __VA_ARGS__)
+#else
+#define debug_printf(fmt, ...) do {} while (0)
+#endif
 
 typedef struct
 {
@@ -24,106 +51,94 @@ typedef struct
     Uint32 frame_draw_event;
 } sdl_rsc_t;
 
-SDL_mutex* emulator_data_mutex;
-SDL_cond* emulator_data_cond;
-int emulator_data_collected = 0;
-
-// This function creates a simple buffer filled with some colors (e.g., a gradient)
-void generateBuffer(Uint32* buffer, Uint32 modifier)
+typedef struct
 {
-    bool XorY = true;
-    for (int y = 0; y < HEIGHT; y++)
-    {
-        for (int x = 0; x < WIDTH; x++)
-        {
-            Uint32 color = ((x+modifier) % 255) << 24 | ((y-modifier) % 255) << 16 | ((XorY ? x : y) * modifier % 255) << 8;
-            buffer[y * WIDTH + x] = color;
-            XorY = !XorY;
-        }
-    }
-}
+    bool esc;
+    bool space;
+    bool a;
+    bool b;
+    bool up;
+    bool down;
+    bool left;
+    bool right;
+} keys_t;
 
+/*---------------------------------------------------------------------*
+ *  external declarations                                              *
+ *---------------------------------------------------------------------*/
+
+/*---------------------------------------------------------------------*
+ *  public data                                                        *
+ *---------------------------------------------------------------------*/
+
+/*---------------------------------------------------------------------*
+ *  private data                                                       *
+ *---------------------------------------------------------------------*/
+static SDL_mutex* emulator_data_mutex;
+static SDL_mutex* emulator_joypad_mutex;
+static SDL_cond* emulator_data_cond;
+static int emulator_data_collected = 0;
+static keys_t keys;
+
+/*---------------------------------------------------------------------*
+ *  private function declarations                                      *
+ *---------------------------------------------------------------------*/
+static void audio_callback     (void* userdata, Uint8* stream, int len);
+static int  emulator_thread_fn (void *data);
+static int  init_sdl_rsc       (sdl_rsc_t *p_sdl_rsc);
+static void destroy_sdl_rsc    (sdl_rsc_t *p_sdl_rsc);
+static void render             (sdl_rsc_t *p_sdl_rsc);
+static void fps                (sdl_rsc_t *p_sdl_rsc);
+
+/*---------------------------------------------------------------------*
+ *  private functions                                                  *
+ *---------------------------------------------------------------------*/
 // Callback function for audio
-void audio_callback(void* userdata, Uint8* stream, int len)
+static void audio_callback(void* userdata, Uint8* stream, int len)
 {
     sdl_rsc_t *p_sdl_rsc = (sdl_rsc_t *) userdata;
     static float t = 0;
     Sint16* out = (Sint16*) stream;
     int i;
 
-    static bool firstTime = true;
-    if (firstTime)
-    {
-        firstTime = false;
-        printf("len=%d\n", len);
-    }
-
-    // int num_samples = len / sizeof(Sint16);
-    // for (i = 0; i < num_samples; i++)
-    // {
-    //     float sample = sinf(2.0f * M_PI * 440.0 * t);
-    //     out[i] = (Sint16)(sample * 32767.0f);
-    //     t += 1.0 / (float) SAMPLE_RATE;
-    // }
-
     uint8_t r[1024], l[1024];
     size_t num_samples;
     emulator_get_audio_data(r, l, &num_samples);
     size_t copy_len = (len < num_samples) ? len : num_samples;
-    // printf("%ld samples: %u, %u, %u, %u, %u, ... %u, %u, %u, %u, %u\n", num_samples,
-    //         r[0], r[1], r[2], r[3], r[4], r[num_samples - 5], r[num_samples - 4], r[num_samples - 3], r[num_samples - 2], r[num_samples - 1]);
     if (copy_len)
     {
         for (i = 0; i < copy_len; i++)
         {
-            out[i*2+0] = (((Sint16) l[i]) - 30) * (1<<14);
-            out[i*2+1] = (((Sint16) r[i]) - 30) * (1<<14);
+            out[i*2+0] = (((Sint16) l[i]) - 30) << 10;
+            out[i*2+1] = (((Sint16) r[i]) - 30) << 10;
         }
-        printf("%ld samples: %d, %d, %d, %d, %d, ... %d, %d, %d, %d, %d\n", copy_len,
-            out[1], out[3], out[5], out[7], out[9], out[copy_len - 10], out[copy_len - 8], out[copy_len - 6], out[copy_len - 4], out[copy_len - 2]);
     }
     else
     {
         memset(stream, 0, len);
     }
 
-    SDL_LockMutex(emulator_data_mutex);
-    emulator_data_collected = 1;
-    SDL_CondSignal(emulator_data_cond);  // Signal the waiting thread
-    SDL_UnlockMutex(emulator_data_mutex);
-
     SDL_Event event;
     SDL_memset(&event, 0, sizeof(event));
     event.type = p_sdl_rsc->frame_draw_event;
     SDL_PushEvent(&event);
 
+    SDL_LockMutex(emulator_data_mutex);
+    emulator_data_collected = 1;
+    SDL_CondSignal(emulator_data_cond);  // Signal the waiting thread
+    SDL_UnlockMutex(emulator_data_mutex);
+
     return;
 }
 
-int emulator_thread_fn(void *data)
+static int emulator_thread_fn(void *data)
 {
     (void) data;
     emulator_run();
     return 0;
 }
 
-void emulator_wait_for_data_collection(void)
-{
-    SDL_LockMutex(emulator_data_mutex);
-    while (!emulator_data_collected)
-    {
-        SDL_CondWait(emulator_data_cond, emulator_data_mutex);  // Wait until signaled
-    }
-    emulator_data_collected = 0;
-    SDL_UnlockMutex(emulator_data_mutex);
-}
-
-uint32_t platform_getSysTick_ms(void)
-{
-    return SDL_GetTicks();
-}
-
-int init_sdl_rsc(sdl_rsc_t *p_sdl_rsc)
+static int init_sdl_rsc(sdl_rsc_t *p_sdl_rsc)
 {
     // Initialize SDL
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0)
@@ -179,11 +194,11 @@ int init_sdl_rsc(sdl_rsc_t *p_sdl_rsc)
     }
     else
     {
-        printf("AudioSpec:\n");
-        printf("     freq: %d:\n", want.freq);
-        printf("   format: %d:\n", want.format);
-        printf(" channels: %d:\n", want.channels);
-        printf("  samples: %d:\n", want.samples);
+        debug_printf("AudioSpec:\n");
+        debug_printf("     freq: %d:\n", want.freq);
+        debug_printf("   format: %d:\n", want.format);
+        debug_printf(" channels: %d:\n", want.channels);
+        debug_printf("  samples: %d:\n", want.samples);
     }
 
     p_sdl_rsc->frame_draw_event = SDL_RegisterEvents(1);
@@ -196,7 +211,7 @@ int init_sdl_rsc(sdl_rsc_t *p_sdl_rsc)
     return 0;
 }
 
-void destroy_sdl_rsc(sdl_rsc_t *p_sdl_rsc)
+static void destroy_sdl_rsc(sdl_rsc_t *p_sdl_rsc)
 {
     if (p_sdl_rsc->window)
     {
@@ -235,11 +250,23 @@ void destroy_sdl_rsc(sdl_rsc_t *p_sdl_rsc)
     return;
 }
 
-void render(sdl_rsc_t *p_sdl_rsc)
+static void render(sdl_rsc_t *p_sdl_rsc)
 {
-    static Uint32 modifier = 0;
+    uint32_t screen[144][160];
 
-    generateBuffer(p_sdl_rsc->screen_buffer, modifier++);
+    emulator_get_video_data((uint32_t*)screen);
+    
+    for (int y = 0; y < HEIGHT; y++)
+    {
+        for (int x = 0; x < WIDTH; x++)
+        {
+            int yy = y / SCALING_FACTOR;
+            int xx = x / SCALING_FACTOR;
+
+            p_sdl_rsc->screen_buffer[y * WIDTH + x] = screen[yy][xx];
+        }
+    }
+
     SDL_UpdateTexture(p_sdl_rsc->texture, NULL, p_sdl_rsc->screen_buffer, WIDTH * sizeof(Uint32));
 
     // Clear the renderer
@@ -252,7 +279,7 @@ void render(sdl_rsc_t *p_sdl_rsc)
     return;
 }
 
-void fps(sdl_rsc_t *p_sdl_rsc)
+static void fps(sdl_rsc_t *p_sdl_rsc)
 {
     char title_buffer[512];
     static uint32_t fps = 0;
@@ -273,6 +300,51 @@ void fps(sdl_rsc_t *p_sdl_rsc)
     return;
 }
 
+/*---------------------------------------------------------------------*
+ *  Emulator Callbacks                                                 *
+ *---------------------------------------------------------------------*/
+void emulator_wait_for_data_collection(void)
+{
+    // return;
+    SDL_LockMutex(emulator_data_mutex);
+    while (!emulator_data_collected)
+    {
+        /* Wait until signaled */
+        SDL_CondWait(emulator_data_cond, emulator_data_mutex);
+    }
+    emulator_data_collected = 0;
+    SDL_UnlockMutex(emulator_data_mutex);
+}
+
+uint32_t platform_getSysTick_ms(void)
+{
+    return SDL_GetTicks();
+}
+
+uint8_t gbc_joypad_buttons_cb(void)
+{
+    uint8_t ret = 0;
+    keys_t keys_local;
+
+    SDL_LockMutex(emulator_joypad_mutex);
+    keys_local = keys;
+    SDL_UnlockMutex(emulator_joypad_mutex);
+
+    ret |= keys.esc   ? GBC_JOYPAD_START  : 0;
+    ret |= keys.space ? GBC_JOYPAD_SELECT : 0;
+    ret |= keys.a     ? GBC_JOYPAD_A      : 0;
+    ret |= keys.b     ? GBC_JOYPAD_B      : 0;
+    ret |= keys.left  ? GBC_JOYPAD_LEFT   : 0;
+    ret |= keys.right ? GBC_JOYPAD_RIGHT  : 0;
+    ret |= keys.up    ? GBC_JOYPAD_UP     : 0;
+    ret |= keys.down  ? GBC_JOYPAD_DOWN   : 0;
+
+    return ret;
+}
+
+/*---------------------------------------------------------------------*
+ *  public functions                                                   *
+ *---------------------------------------------------------------------*/
 int main(int argc, char* argv[])
 {
     if (2 > argc)
@@ -302,6 +374,7 @@ int main(int argc, char* argv[])
         return 1;
     }
 
+    emulator_joypad_mutex = SDL_CreateMutex();
     emulator_data_mutex = SDL_CreateMutex();
     emulator_data_cond = SDL_CreateCond();
 
@@ -311,28 +384,48 @@ int main(int argc, char* argv[])
 
     // Main loop
     SDL_Event e;
-
-    // int quit = 0;
-    // while (!quit)
-    // {
-    //     while (SDL_PollEvent(&e))
-    //     {
-    //         if (e.type == SDL_QUIT)
-    //         {
-    //             quit = 1;
-    //         }
-    //     }
-      
-    //     render(&sdl_rsc);
-    //     fps(&sdl_rsc);
-    // }
-    
     while (SDL_WaitEvent(&e))
     {
         if (e.type == sdl_rsc.frame_draw_event)
         {
             render(&sdl_rsc);
             fps(&sdl_rsc);
+        }
+        else if (e.type == SDL_KEYDOWN)
+        {
+            SDL_LockMutex(emulator_joypad_mutex);
+            switch (e.key.keysym.sym)
+            {
+            case SDLK_ESCAPE: keys.esc   = true; break;
+            case SDLK_SPACE : keys.space = true; break;
+            case SDLK_a     : keys.a     = true; break;
+            case SDLK_b     : keys.b     = true; break;
+            case SDLK_LEFT  : keys.left  = true; break;
+            case SDLK_RIGHT : keys.right = true; break;
+            case SDLK_UP    : keys.up    = true; break;
+            case SDLK_DOWN  : keys.down  = true; break;
+            default:
+                break;
+            }
+            SDL_UnlockMutex(emulator_joypad_mutex);
+        }
+        else if (e.type == SDL_KEYUP)
+        {
+            SDL_LockMutex(emulator_joypad_mutex);
+            switch (e.key.keysym.sym)
+            {
+            case SDLK_ESCAPE: keys.esc   = false; break;
+            case SDLK_SPACE : keys.space = false; break;
+            case SDLK_a     : keys.a     = false; break;
+            case SDLK_b     : keys.b     = false; break;
+            case SDLK_LEFT  : keys.left  = false; break;
+            case SDLK_RIGHT : keys.right = false; break;
+            case SDLK_UP    : keys.up    = false; break;
+            case SDLK_DOWN  : keys.down  = false; break;
+            default:
+                break;
+            }
+            SDL_UnlockMutex(emulator_joypad_mutex);
         }
         else if (e.type == SDL_QUIT)
         {
@@ -344,6 +437,11 @@ int main(int argc, char* argv[])
     destroy_sdl_rsc(&sdl_rsc);
     SDL_DestroyCond(emulator_data_cond);
     SDL_DestroyMutex(emulator_data_mutex);
+    SDL_DestroyMutex(emulator_joypad_mutex);
 
     return 0;
 }
+
+/*---------------------------------------------------------------------*
+ *  eof                                                                *
+ *---------------------------------------------------------------------*/

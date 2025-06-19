@@ -20,6 +20,7 @@
 #include "emulator.h"
 #include "bus.h"
 #include "cpu.h"
+#include "timer.h"
 #include "apu.h"
 
 /*---------------------------------------------------------------------*
@@ -66,6 +67,7 @@ int emulator_load_game(char *fileName)
 void emulator_run(void)
 {
 	uint64_t start, end;
+	int i;
 
 	start = platform_getSysTick_ms();
 
@@ -79,6 +81,7 @@ void emulator_run(void)
 			uint32_t ingame_frames = gbc_cpu_get_cycle_cnt() / 140448;
 			uint32_t realworld_frames = (duration * 60) / 1000;
 			uint64_t cyccnt_8mhz = 8000 * duration;
+			printf("\n\n");
 			printf("Cycle-Count: %llu, elapsed time: %lums, Cycle-Count(8MHz): %llu, emulation_ccnt/real_ccnt=%llu\n", gbc_cpu_get_cycle_cnt(), duration, cyccnt_8mhz, gbc_cpu_get_cycle_cnt()/cyccnt_8mhz);
 			printf("emulation_frames: %lu, real_frames: %lu, emulation_frames/real_frames=%lu\n", ingame_frames, realworld_frames, ingame_frames/realworld_frames);
 			printf("\nCPU Stopped!\n");

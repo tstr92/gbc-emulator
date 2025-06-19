@@ -101,6 +101,9 @@ typedef struct
 
 	bool interrupts_enabled;
 	bool stopped;
+
+	uint16_t last_addr;
+	uint8_t last_opcode;
 } sm83_t;
 
 typedef enum
@@ -195,6 +198,15 @@ static sm83_t cpu;
 void cpu_init(void)
 {
 	memset(&cpu, 0, sizeof(cpu));
+	
+	/* CGB hardware can be detected by examining the CPU accumulator (A-register) directly after startup.
+	   A value of $11 indicates CGB (or GBA) hardware, if so, CGB functions can be used (if unlocked, see above).
+	   When A=$11, you may also examine Bit 0 of the CPUs B-Register to separate between CGB (bit cleared) and
+	   GBA (bit set), by that detection it is possible to use “repaired” color palette data matching for GBA displays.
+	*/
+	cpu.af.a = 0x11;
+
+	return;
 }
 
 void eval_Z_flag(uint8_t reg)
@@ -352,6 +364,9 @@ void cpu_handle_opcode(void)
 	opcode = bus_get_memory(cpu.pc);
 	opcode_type = opcode_types[opcode];
 
+	cpu.last_addr = cpu.pc;
+	cpu.last_opcode = opcode;
+
 	switch (opcode_type)
 	{
 	case OPC_NONE:
@@ -373,6 +388,7 @@ void cpu_handle_opcode(void)
 		cpu.next_instruction += 4;
 		cpu.pc += 2;
 		gbc_timer_diva_reset();
+		bus_stop_instr_cb();
 	}
 	break;
 	
@@ -1668,7 +1684,7 @@ bool cpu_handle_interrupt(void)
 		isr_state_setup_pc_e,
 	} isr_state = isr_state_idle_e;
 	static uint8_t isr = 0;
-	bool isrInPreparation = false;
+	bool isr_handled = false;
 
 	switch (isr_state)
 	{
@@ -1713,7 +1729,7 @@ bool cpu_handle_interrupt(void)
 			cpu.next_instruction += 3;
 
 			isr_state = isr_state_idle_e;
-			isrInPreparation = true;
+			isr_handled = true;
 		}
 		break;
 
@@ -1727,13 +1743,13 @@ bool cpu_handle_interrupt(void)
 			{
 				isr_state = isr_state_setup_pc_e;
 				cpu.next_instruction += 2;
-				isrInPreparation = true;
+				isr_handled = true;
 			}
 		}
 		break;
 	}
 
-	return isrInPreparation;
+	return isr_handled;
 }
 
 void gbc_cpu_tick(void)
@@ -1757,6 +1773,11 @@ bool gbc_cpu_stopped(void)
 uint64_t gbc_cpu_get_cycle_cnt(void)
 {
 	return cpu.cycle_cnt;
+}
+
+void gbc_cpu_stall(uint32_t num_ticks)
+{
+	cpu.next_instruction += num_ticks;
 }
 
 #if (0 < BUILD_TEST_DLL)

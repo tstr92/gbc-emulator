@@ -16,7 +16,6 @@
  *  include files                                                      *
  *---------------------------------------------------------------------*/
 #include <stdbool.h>
-#include <string.h>
 
 #include "apu.h"
 #include "bus.h"
@@ -53,9 +52,9 @@
 
 #define AUDIO_MASTER_CONTROL_AUDIO_ON (1<<7)
 #define AUDIO_MASTER_CONTROL_CH1_ON   (1<<0)
-#define AUDIO_MASTER_CONTROL_CH2_ON   (1<<0)
-#define AUDIO_MASTER_CONTROL_CH3_ON   (1<<0)
-#define AUDIO_MASTER_CONTROL_CH4_ON   (1<<0)
+#define AUDIO_MASTER_CONTROL_CH2_ON   (1<<1)
+#define AUDIO_MASTER_CONTROL_CH3_ON   (1<<2)
+#define AUDIO_MASTER_CONTROL_CH4_ON   (1<<3)
 
 #define PANNING_CH1_RIGHT             (1<<0)
 #define PANNING_CH2_RIGHT             (1<<1)
@@ -108,7 +107,12 @@
 #define CH123_PERIOD_OVERFLOW          0x800
 #define CH12_LENGTH_TIMER_OVERFLOW     64
 
-#define MAX_NUM_SAMPLES 549
+#define MAX_NUM_SAMPLES 550
+
+#define DC_PATTERN_12_5 (0b00000001)
+#define DC_PATTERN_25_0 (0b00000011)
+#define DC_PATTERN_50_0 (0b00001111)
+#define DC_PATTERN_75_0 (0b11111100)
 
 typedef struct
 {
@@ -135,9 +139,6 @@ typedef struct
     uint8_t audio_master_control;   // 0xFF26
     uint8_t wave_ram[0x10];         // 0xFF30 - 0xFF3F
 
-    bool wave_ram_busy;
-    uint8_t wave_ram_current_byte;
-
     struct
     {
         uint8_t right[MAX_NUM_SAMPLES];
@@ -145,7 +146,7 @@ typedef struct
         uint32_t index;
     } stereo_data;
     
-} apu_t;
+} apu_mem_t;
 
 typedef struct
 {
@@ -155,7 +156,8 @@ typedef struct
     uint8_t output;
     
     /* period, DC*/
-    uint16_t duty_cycle;         // in 0.1%
+    uint8_t  dc_pattern;
+    uint8_t  dc_pattern_bit;
     uint16_t period;             // period from registers
     uint16_t period_counter;     // period-clock: 1MHz
     uint8_t  period_prescaler;   // @CPU-CLK: prescaler to generate period-clock
@@ -236,6 +238,14 @@ typedef struct
     uint8_t envelope_sweep_pace_prescaler;   // divides div_apu(512Hz) down to 64Hz
 } ch4_t;
 
+typedef struct
+{
+    #define FREQ_DBG_LEN 16
+    uint64_t last_cycle_cnt;
+    uint32_t cycle_delta[FREQ_DBG_LEN];
+    uint8_t idx;
+} frequency_debug_t;
+
 /*---------------------------------------------------------------------*
  *  external declarations                                              *
  *---------------------------------------------------------------------*/
@@ -247,11 +257,16 @@ typedef struct
 /*---------------------------------------------------------------------*
  *  private data                                                       *
  *---------------------------------------------------------------------*/
-static apu_t  apu = {0};
-static ch12_t ch1 = {0};
-static ch12_t ch2 = {0};
-static ch3_t  ch3 = {0};
-static ch4_t  ch4 = {0};
+static apu_mem_t  apu = {0};
+static ch12_t     ch1 = {0};
+static ch12_t     ch2 = {0};
+static ch3_t      ch3 = {0};
+static ch4_t      ch4 = {0};
+
+static frequency_debug_t ch12_period_1M;   // 4
+static frequency_debug_t ch12_sweep_128;   // 32768
+static frequency_debug_t ch12_env_64 ;     // 65536
+static frequency_debug_t ch12_len_256;     // 16384
 
 /*---------------------------------------------------------------------*
  *  private function declarations                                      *
@@ -259,6 +274,8 @@ static ch4_t  ch4 = {0};
 static void apu_ch12_tick(ch12_t *chx, bool div_apu_512Hz);
 static void apu_ch3_tick(bool div_apu_512Hz);
 static void apu_ch4_tick(bool div_apu_512Hz);
+static uint8_t apu_high_pass_filter(uint8_t in, uint8_t *p_capacitor);
+static void gbc_apu_frequency_debug_do(frequency_debug_t *this);
 
 /*---------------------------------------------------------------------*
  *  private functions                                                  *
@@ -281,16 +298,15 @@ static void apu_ch12_tick(ch12_t *chx, bool div_apu_512Hz)
         /* Period / Duty-Cycle: Generates Output */
         if (CH12_PERIOD_PRESCALER <= ++chx->period_prescaler)
         {
-            uint32_t total_time;
-            uint32_t dc_threshold;
-
             chx->period_prescaler = 0;
-            total_time           = CH123_PERIOD_OVERFLOW - chx->period;
-            dc_threshold         = chx->period + (total_time * (uint32_t) chx->duty_cycle) / 1000;
-            chx->wave_level_high = (chx->period_counter >= dc_threshold);
+
+            if (chx == &ch1) { gbc_apu_frequency_debug_do(&ch12_period_1M); }
+
+            chx->wave_level_high = (0 != (chx->dc_pattern & (1<<chx->dc_pattern_bit)));
 
             if (CH123_PERIOD_OVERFLOW <= ++chx->period_counter)
             {
+                chx->dc_pattern_bit = (chx->dc_pattern_bit + 1) & 0x07;
                 chx->period_counter = chx->period;
             }
         }
@@ -300,6 +316,7 @@ static void apu_ch12_tick(ch12_t *chx, bool div_apu_512Hz)
         {
             if (CH12_PERIOD_SWEEP_PRESCALER <= ++chx->period_sweep_pace_prescaler)
             {
+                if (chx == &ch1) { gbc_apu_frequency_debug_do(&ch12_sweep_128); }
                 chx->period_sweep_pace_prescaler = 0;
                 if (chx->period_sweep_pace <= ++chx->period_sweep_pace_counter)
                 {
@@ -340,6 +357,7 @@ static void apu_ch12_tick(ch12_t *chx, bool div_apu_512Hz)
         {
             if (CH_LENGTH_TIMER_PRESCALER <= ++chx->length_timer_prescaler)
             {
+                if (chx == &ch1) { gbc_apu_frequency_debug_do(&ch12_len_256); }
                 chx->length_timer_prescaler = 0;
                 if (CH12_LENGTH_TIMER_OVERFLOW <= ++chx->length_timer)
                 {
@@ -354,6 +372,7 @@ static void apu_ch12_tick(ch12_t *chx, bool div_apu_512Hz)
         {
             if (CH124_ENVELOPE_SWEEP_PRESCALER <= ++chx->envelope_sweep_pace_prescaler)
             {
+                if (chx == &ch1) { gbc_apu_frequency_debug_do(&ch12_env_64); }
                 chx->envelope_sweep_pace_prescaler = 0;
                 if (chx->envelope_sweep_pace <= ++chx->envelope_sweep_pace_counter)
                 {
@@ -522,6 +541,39 @@ static void apu_ch4_tick(bool div_apu_512Hz)
     return;
 }
 
+static uint8_t apu_high_pass_filter(uint8_t in, uint8_t *p_capacitor)
+{
+    uint64_t in_local;
+    uint8_t out;
+
+    /* (https://gbdev.io/pandocs/Audio_details.html?highlight=hpf#mixer)
+       The charge factor can be calculated for any output sampling rate as 0.999958^(4194304/rate).
+       So if you were applying high_pass() at 32768 Hz, you’d use a charge factor of 0.994638.   */
+    in_local = (uint64_t) in * (1<<20);          // * 1M
+    out = (in_local - *p_capacitor) / (1<<20);   // / 1M
+    *p_capacitor = (in_local - out * 1042954);   // 99.4638 % of 1M
+
+    return in;//out;
+}
+
+static void gbc_apu_frequency_debug_do(frequency_debug_t *this)
+{
+    uint64_t cycle_cnt;
+    uint32_t val;
+
+    cycle_cnt = gbc_cpu_get_cycle_cnt();
+    val = cycle_cnt - this->last_cycle_cnt;
+    this->last_cycle_cnt = cycle_cnt;
+
+    this->cycle_delta[this->idx++] = val;
+    if (FREQ_DBG_LEN <= this->idx)
+    {
+        this->idx = 0;
+    }
+
+    return;
+}
+
 /*---------------------------------------------------------------------*
  *  public functions                                                   *
  *---------------------------------------------------------------------*/
@@ -529,16 +581,15 @@ void gbc_apu_init(void)
 {
     /* ch1 */
     ch1.id = AUDIO_MASTER_CONTROL_CH1_ON;
-    ch1.duty_cycle = 125;
+    ch1.dc_pattern = DC_PATTERN_12_5;
 
     /* ch2 (has no period-sweep !) */
     ch2.id = AUDIO_MASTER_CONTROL_CH2_ON;
-    ch2.duty_cycle = 125;
+    ch2.dc_pattern = DC_PATTERN_12_5;
     ch2.period_sweep_dir_subtract = true;   // no overflow
     ch2.period_sweep_pace = 0;              // sweep disabled
 }
 
-/* internal: call this with every clock tick */
 void gbc_apu_tick(void)
 {
     static uint8_t last_div = 0;
@@ -547,10 +598,9 @@ void gbc_apu_tick(void)
     bool div_apu_512Hz;
     uint8_t left, right;
 
-
-    apu.wave_ram_busy = false;
     div = TIMER_GET_DIV();
-    div_apu_512Hz = ((last_div & DIV_APU_BIT) && !(div & DIV_APU_BIT));
+    div_apu_512Hz = !!((last_div & DIV_APU_BIT) ^ (div & DIV_APU_BIT));
+    // div_apu_512Hz = ((last_div & DIV_APU_BIT) && !(div & DIV_APU_BIT));
     last_div = div;
     
     apu_ch12_tick(&ch1, div_apu_512Hz);
@@ -558,8 +608,11 @@ void gbc_apu_tick(void)
     apu_ch3_tick(div_apu_512Hz);
     apu_ch4_tick(div_apu_512Hz);
 
-    if (0 == ++sampling_timer)
+    sampling_timer = (sampling_timer + 1) & 0x7F;
+    if (0 == sampling_timer)
     {
+        static uint8_t cap_l = 0;
+        static uint8_t cap_r = 0;
         left = 0;
         right = 0;
 
@@ -572,8 +625,8 @@ void gbc_apu_tick(void)
         left  += (0 != (apu.sound_panning &  PANNING_CH3_LEFT)) ? ch3.output: 0;
         left  += (0 != (apu.sound_panning &  PANNING_CH4_LEFT)) ? ch4.output: 0;
 
-        apu.stereo_data.right[apu.stereo_data.index] = right;
-        apu.stereo_data.left[apu.stereo_data.index] = left;
+        apu.stereo_data.right[apu.stereo_data.index] = apu_high_pass_filter(right, &cap_r);
+        apu.stereo_data.left[apu.stereo_data.index] = apu_high_pass_filter(left, &cap_l);
         if (MAX_NUM_SAMPLES <= ++apu.stereo_data.index)
         {
             emulator_wait_for_data_collection();
@@ -585,12 +638,13 @@ void gbc_apu_tick(void)
     return;
 }
 
-/* internal: only call this for address 0xFF10 - 0xFF3F , 0xFF76-0xFF77 */
 uint8_t gbc_apu_get_memory(uint16_t addr)
 {
     uint8_t ret;
 
     ret = 0;
+
+    printf("read %04x\n", addr);
 
     switch (addr)
     {
@@ -656,7 +710,7 @@ uint8_t gbc_apu_get_memory(uint16_t addr)
 
         case 0xFF30 ... 0xFF3F:   // Audio Wave RAM
         {
-            ret = apu.wave_ram_busy ? apu.wave_ram_current_byte : apu.wave_ram[addr & 0xF];
+            ret = ch3.running ? apu.wave_ram[ch3.wave_ram_byte_select] : apu.wave_ram[addr & 0xF];
         }
         break;
 
@@ -674,6 +728,7 @@ uint8_t gbc_apu_get_memory(uint16_t addr)
         case 0xFF16: case 0xFF1F: case 0xFF27 ... 0xFF2F:
         {
             /* write-only or reserved */
+            // putc('a', stdout);
             ret = 0xFF;
         }
         break;
@@ -700,7 +755,6 @@ uint8_t gbc_apu_get_memory(uint16_t addr)
     return ret;
 }
 
-/* internal: only call this for address 0xFF10 - 0xFF3F , 0xFF76-0xFF77 (RO) */
 void gbc_apu_set_memory(uint16_t addr, uint8_t val)
 {
     switch (addr)
@@ -716,13 +770,12 @@ void gbc_apu_set_memory(uint16_t addr, uint8_t val)
             apu.ch1_length_tim_dc = val;
             switch ((val & CH12_DC_MSK) >> CH12_DC_POS)
             {
-                case CH12_DC_12_5_PERCENT: ch1.duty_cycle = 125; break;
-                case CH12_DC_25_PERCENT  : ch1.duty_cycle = 250; break;
-                case CH12_DC_50_PERCENT  : ch1.duty_cycle = 500; break;
-                case CH12_DC_75_PERCENT  : ch1.duty_cycle = 750; break;
+                case CH12_DC_12_5_PERCENT: ch1.dc_pattern = DC_PATTERN_12_5; break;
+                case CH12_DC_25_PERCENT  : ch1.dc_pattern = DC_PATTERN_25_0; break;
+                case CH12_DC_50_PERCENT  : ch1.dc_pattern = DC_PATTERN_50_0; break;
+                case CH12_DC_75_PERCENT  : ch1.dc_pattern = DC_PATTERN_75_0; break;
                 default: break;
             }
-            ch1.length_timer = (val & CH_LENGTH_TIMER_MSK);
         }
         break;
 
@@ -733,6 +786,7 @@ void gbc_apu_set_memory(uint16_t addr, uint8_t val)
                 (0 ==  (val & CH124_ENV_DIR_INC_MSK)))
             {
                 ch1.running = false;
+                // putc('3', stdout);
             }
         }
         break;
@@ -768,7 +822,7 @@ void gbc_apu_set_memory(uint16_t addr, uint8_t val)
                 }
 
                 /* reset internal states */
-                ch1.period_counter = 0;
+                ch1.period_counter = ch1.period;
                 ch1.period_prescaler = 0;
                 ch1.period_sweep_pace_counter = 0;
                 ch1.period_sweep_pace_prescaler = 0;
@@ -776,13 +830,17 @@ void gbc_apu_set_memory(uint16_t addr, uint8_t val)
                 ch1.envelope_sweep_pace_prescaler = 0;
                 ch1.wave_level_high = false;
 
-                /* turn off ch1 if there would be a sweep overflow */
-                if (!ch1.period_sweep_dir_subtract)
+                if (0 != ch1.period_sweep_step)
                 {
-                    uint16_t new_period = ch1.period + (ch1.period >> ch1.period_sweep_step);
-                    if (CH123_PERIOD_OVERFLOW <= new_period)
+                    /* turn off ch1 if there would be a sweep overflow */
+                    if (!ch1.period_sweep_dir_subtract)
                     {
-                        ch1.running = false;
+                        uint16_t new_period = ch1.period + (ch1.period >> ch1.period_sweep_step);
+                        if (CH123_PERIOD_OVERFLOW <= new_period)
+                        {
+                            ch1.running = false;
+                            // putc('1', stdout);
+                        }
                     }
                 }
                 
@@ -790,6 +848,7 @@ void gbc_apu_set_memory(uint16_t addr, uint8_t val)
                 if ((0 == ch1.volume) && (false == ch1.envelope_dir_increase))
                 {
                     ch1.running = false;
+                    // putc('2', stdout);
                 }
             }
         }
@@ -800,10 +859,10 @@ void gbc_apu_set_memory(uint16_t addr, uint8_t val)
             apu.ch2_length_tim_dc = val;
             switch ((val & CH12_DC_MSK) >> CH12_DC_POS)
             {
-                case CH12_DC_12_5_PERCENT: ch2.duty_cycle = 125; break;
-                case CH12_DC_25_PERCENT  : ch2.duty_cycle = 250; break;
-                case CH12_DC_50_PERCENT  : ch2.duty_cycle = 500; break;
-                case CH12_DC_75_PERCENT  : ch2.duty_cycle = 750; break;
+                case CH12_DC_12_5_PERCENT: ch2.dc_pattern = DC_PATTERN_12_5; break;
+                case CH12_DC_25_PERCENT  : ch2.dc_pattern = DC_PATTERN_25_0; break;
+                case CH12_DC_50_PERCENT  : ch2.dc_pattern = DC_PATTERN_50_0; break;
+                case CH12_DC_75_PERCENT  : ch2.dc_pattern = DC_PATTERN_75_0; break;
                 default: break;
             }
             ch2.length_timer = (val & CH_LENGTH_TIMER_MSK);
@@ -817,6 +876,7 @@ void gbc_apu_set_memory(uint16_t addr, uint8_t val)
                 (0 ==  (val & CH124_ENV_DIR_INC_MSK)))
             {
                 ch2.running = false;
+                // putc('4', stdout);
             }
         }
         break;
@@ -863,6 +923,7 @@ void gbc_apu_set_memory(uint16_t addr, uint8_t val)
                 if ((0 == ch2.volume) && (false == ch2.envelope_dir_increase))
                 {
                     ch2.running = false;
+                    // putc('5', stdout);
                 }
             }
         }
@@ -875,6 +936,7 @@ void gbc_apu_set_memory(uint16_t addr, uint8_t val)
             if (!ch3.dac_en)
             {
                 ch3.running = false;
+                // putc('6', stdout);
             }
         }
         break;
@@ -931,6 +993,7 @@ void gbc_apu_set_memory(uint16_t addr, uint8_t val)
                 if (!ch3.dac_en)
                 {
                     ch3.running = false;
+                    // putc('7', stdout);
                 }
             }
         }
@@ -950,6 +1013,7 @@ void gbc_apu_set_memory(uint16_t addr, uint8_t val)
                 (0 ==  (val & CH124_ENV_DIR_INC_MSK)))
             {
                 ch4.running = false;
+                // putc('8', stdout);
             }
         }
         break;
@@ -1000,6 +1064,7 @@ void gbc_apu_set_memory(uint16_t addr, uint8_t val)
                 if ((0 == ch4.volume) && (false == ch4.envelope_dir_increase))
                 {
                     ch4.running = false;
+                    // putc('9', stdout);
                 }
             }
         }
@@ -1027,7 +1092,10 @@ void gbc_apu_set_memory(uint16_t addr, uint8_t val)
 
         case 0xFF30 ... 0xFF3F:   // Audio Wave RAM
         {
-            apu.wave_ram[addr & 0xF] = val;
+            if (!ch3.running)
+            {
+                apu.wave_ram[addr & 0xF] = val;
+            }
         }
         break;
 

@@ -35,6 +35,7 @@
 void gbc_cpu_tick(void);
 bool gbc_cpu_stopped(void);
 uint64_t gbc_cpu_get_cycle_cnt(void);
+void gbc_cpu_stall(uint32_t num_ticks);
 
 /*---------------------------------------------------------------------*
  *  global data                                                        *

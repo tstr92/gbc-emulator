@@ -122,7 +122,7 @@ void gbc_joypad_set_memory(uint16_t addr, uint8_t val)
 __attribute__((weak))
 uint8_t gbc_joypad_buttons_cb(void)
 {
-    return 0;
+    return 0x00;
 }
 
 /*---------------------------------------------------------------------*

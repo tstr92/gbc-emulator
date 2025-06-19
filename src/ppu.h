@@ -33,7 +33,7 @@
 /* internal: one-time init */
 void gbc_ppu_init(void);
 
-/* internal: call this with every clock tick */
+/* internal: call this with every dot tick */
 void gbc_ppu_tick(void);
 
 /* internal: only call this for address 0xFF10 - 0xFF3F */
