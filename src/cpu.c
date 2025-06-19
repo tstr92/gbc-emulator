@@ -187,29 +187,25 @@ static sm83_t cpu;
 /*---------------------------------------------------------------------*
  *  private function declarations                                      *
  *---------------------------------------------------------------------*/
+static void eval_Z_flag(uint8_t reg);
+static void set_Z_flag(bool zero);
+static void set_N_flag(bool subtract);
+static void eval_H_flag_c(uint8_t target, uint8_t operand, bool sub, uint8_t carry);
+static void eval_H_flag(uint8_t target, uint8_t operand, bool sub);
+static void eval_H_flag_16(uint16_t target, uint16_t operand);
+static void set_H_flag(bool h);
+static void eval_C_flag_c(uint8_t target, uint8_t operand, bool sub, uint8_t carry);
+static void eval_C_flag(uint8_t target, uint8_t operand, bool sub);
+static void eval_C_flag_16(uint16_t target, uint16_t operand);
+static void set_C_flag(bool c);
+static void cpu_handle_opcode(void);
+static void cpu_print_state(void);
+static bool cpu_handle_interrupt(void);
 
 /*---------------------------------------------------------------------*
  *  private functions                                                  *
  *---------------------------------------------------------------------*/
-
-/*---------------------------------------------------------------------*
- *  public functions                                                   *
- *---------------------------------------------------------------------*/
-void cpu_init(void)
-{
-	memset(&cpu, 0, sizeof(cpu));
-	
-	/* CGB hardware can be detected by examining the CPU accumulator (A-register) directly after startup.
-	   A value of $11 indicates CGB (or GBA) hardware, if so, CGB functions can be used (if unlocked, see above).
-	   When A=$11, you may also examine Bit 0 of the CPUs B-Register to separate between CGB (bit cleared) and
-	   GBA (bit set), by that detection it is possible to use “repaired” color palette data matching for GBA displays.
-	*/
-	cpu.af.a = 0x11;
-
-	return;
-}
-
-void eval_Z_flag(uint8_t reg)
+static void eval_Z_flag(uint8_t reg)
 {
 	if (0 == reg)
 	{
@@ -221,7 +217,7 @@ void eval_Z_flag(uint8_t reg)
 	}
 }
 
-void set_Z_flag(bool zero)
+static void set_Z_flag(bool zero)
 {
 	if (zero)
 	{
@@ -233,7 +229,7 @@ void set_Z_flag(bool zero)
 	}
 }
 
-void set_N_flag(bool subtract)
+static void set_N_flag(bool subtract)
 {
 	if (subtract)
 	{
@@ -245,7 +241,7 @@ void set_N_flag(bool subtract)
 	}
 }
 
-void eval_H_flag_c(uint8_t target, uint8_t operand, bool sub, uint8_t carry)
+static void eval_H_flag_c(uint8_t target, uint8_t operand, bool sub, uint8_t carry)
 {
 	bool h;
 	uint8_t temp = target + operand;
@@ -270,12 +266,12 @@ void eval_H_flag_c(uint8_t target, uint8_t operand, bool sub, uint8_t carry)
 	return;
 }
 
-void eval_H_flag(uint8_t target, uint8_t operand, bool sub)
+static void eval_H_flag(uint8_t target, uint8_t operand, bool sub)
 {
 	eval_H_flag_c(target, operand, sub, 0);
 }
 
-void eval_H_flag_16(uint16_t target, uint16_t operand)
+static void eval_H_flag_16(uint16_t target, uint16_t operand)
 {
 	if (((target & 0xFFF) + (operand & 0xFFF)) > 0xFFF)
 	{
@@ -289,7 +285,7 @@ void eval_H_flag_16(uint16_t target, uint16_t operand)
 	return;
 }
 
-void set_H_flag(bool h)
+static void set_H_flag(bool h)
 {
 	if (h)
 	{
@@ -301,7 +297,7 @@ void set_H_flag(bool h)
 	}
 }
 
-void eval_C_flag_c(uint8_t target, uint8_t operand, bool sub, uint8_t carry)
+static void eval_C_flag_c(uint8_t target, uint8_t operand, bool sub, uint8_t carry)
 {
 	bool c;
 	if (!sub)
@@ -325,12 +321,12 @@ void eval_C_flag_c(uint8_t target, uint8_t operand, bool sub, uint8_t carry)
 	return;
 }
 
-void eval_C_flag(uint8_t target, uint8_t operand, bool sub)
+static void eval_C_flag(uint8_t target, uint8_t operand, bool sub)
 {
 	eval_C_flag_c(target, operand, sub, 0);
 }
 
-void eval_C_flag_16(uint16_t target, uint16_t operand)
+static void eval_C_flag_16(uint16_t target, uint16_t operand)
 {
 	if ((((uint32_t) target) + ((uint32_t) operand)) > 0xFFFF)
 	{
@@ -344,7 +340,7 @@ void eval_C_flag_16(uint16_t target, uint16_t operand)
 	return;
 }
 
-void set_C_flag(bool c)
+static void set_C_flag(bool c)
 {
 	if (c)
 	{
@@ -356,7 +352,7 @@ void set_C_flag(bool c)
 	}
 }
 
-void cpu_handle_opcode(void)
+static void cpu_handle_opcode(void)
 {
 	uint8_t opcode;
 	opcode_t opcode_type;
@@ -981,10 +977,10 @@ void cpu_handle_opcode(void)
 	{
 		uint8_t operand_lut[8] = {
 			cpu.bc.b, cpu.bc.c, cpu.de.d, cpu.de.e, 
-			cpu.hl.h, cpu.hl.l, bus_get_memory(cpu.hl.hl), cpu.af.a,
+			cpu.hl.h, cpu.hl.l,        0, cpu.af.a,
 		};
 		uint8_t i = (opcode & 0x07);
-		uint8_t operand = operand_lut[i];
+		uint8_t operand = (6 == i) ? bus_get_memory(cpu.hl.hl) : operand_lut[i];
 		uint8_t duration = (i == 6) ? 8 : 4;
 		uint8_t result = cpu.af.a + operand;
 		eval_Z_flag(result);
@@ -1001,10 +997,10 @@ void cpu_handle_opcode(void)
 	{
 		uint8_t operand_lut[8] = {
 			cpu.bc.b, cpu.bc.c, cpu.de.d, cpu.de.e, 
-			cpu.hl.h, cpu.hl.l, bus_get_memory(cpu.hl.hl), cpu.af.a, 
+			cpu.hl.h, cpu.hl.l,        0, cpu.af.a, 
 		};
 		uint8_t i = (opcode & 0x07);
-		uint8_t operand = operand_lut[i];
+		uint8_t operand = (6 == i) ? bus_get_memory(cpu.hl.hl) : operand_lut[i];
 		uint8_t duration = (i == 6) ? 8 : 4;
 		uint8_t result = cpu.af.a - operand;
 		eval_Z_flag(result);
@@ -1021,10 +1017,10 @@ void cpu_handle_opcode(void)
 	{
 		uint8_t operand_lut[8] = {
 			cpu.bc.b, cpu.bc.c, cpu.de.d, cpu.de.e, 
-			cpu.hl.h, cpu.hl.l, bus_get_memory(cpu.hl.hl), cpu.af.a, 
+			cpu.hl.h, cpu.hl.l,        0, cpu.af.a, 
 		};
 		uint8_t i = (opcode & 0x07);
-		uint8_t operand = operand_lut[i];
+		uint8_t operand = (6 == i) ? bus_get_memory(cpu.hl.hl) : operand_lut[i];
 		uint8_t duration = (i == 6) ? 8 : 4;
 		cpu.af.a = cpu.af.a & operand;
 		eval_Z_flag(cpu.af.a);
@@ -1040,10 +1036,10 @@ void cpu_handle_opcode(void)
 	{
 		uint8_t operand_lut[8] = {
 			cpu.bc.b, cpu.bc.c, cpu.de.d, cpu.de.e, 
-			cpu.hl.h, cpu.hl.l, bus_get_memory(cpu.hl.hl), cpu.af.a, 
+			cpu.hl.h, cpu.hl.l,        0, cpu.af.a, 
 		};
 		uint8_t i = (opcode & 0x07);
-		uint8_t operand = operand_lut[i];
+		uint8_t operand = (6 == i) ? bus_get_memory(cpu.hl.hl) : operand_lut[i];
 		uint8_t duration = (i == 6) ? 8 : 4;
 		cpu.af.a = cpu.af.a | operand;
 		eval_Z_flag(cpu.af.a);
@@ -1111,10 +1107,10 @@ void cpu_handle_opcode(void)
 	{
 		uint8_t operand_lut[8] = {
 			cpu.bc.b, cpu.bc.c, cpu.de.d, cpu.de.e, 
-			cpu.hl.h, cpu.hl.l, bus_get_memory(cpu.hl.hl), cpu.af.a, 
+			cpu.hl.h, cpu.hl.l,        0, cpu.af.a, 
 		};
 		uint8_t i = (opcode & 0x07);
-		uint8_t operand = operand_lut[i];
+		uint8_t operand = (6 == i) ? bus_get_memory(cpu.hl.hl) : operand_lut[i];
 		uint8_t duration = (i == 6) ? 8 : 4;
 		uint8_t c = (0 != (cpu.af.f & FLAG_C)) ? 1 : 0;
 		uint8_t result = cpu.af.a + operand + c;
@@ -1132,10 +1128,10 @@ void cpu_handle_opcode(void)
 	{
 		uint8_t operand_lut[8] = {
 			cpu.bc.b, cpu.bc.c, cpu.de.d, cpu.de.e, 
-			cpu.hl.h, cpu.hl.l, bus_get_memory(cpu.hl.hl), cpu.af.a, 
+			cpu.hl.h, cpu.hl.l,        0, cpu.af.a, 
 		};
 		uint8_t i = (opcode & 0x07);
-		uint8_t operand = operand_lut[i];
+		uint8_t operand = (6 == i) ? bus_get_memory(cpu.hl.hl) : operand_lut[i];
 		uint8_t duration = (i == 6) ? 8 : 4;
 		uint8_t c = (0 != (cpu.af.f & FLAG_C)) ? 1 : 0;
 		uint8_t result = cpu.af.a - operand - c;
@@ -1153,10 +1149,10 @@ void cpu_handle_opcode(void)
 	{
 		uint8_t operand_lut[8] = {
 			cpu.bc.b, cpu.bc.c, cpu.de.d, cpu.de.e, 
-			cpu.hl.h, cpu.hl.l, bus_get_memory(cpu.hl.hl), cpu.af.a, 
+			cpu.hl.h, cpu.hl.l,        0, cpu.af.a, 
 		};
 		uint8_t i = (opcode & 0x07);
-		uint8_t operand = operand_lut[i];
+		uint8_t operand = (6 == i) ? bus_get_memory(cpu.hl.hl) : operand_lut[i];
 		uint8_t duration = (i == 6) ? 8 : 4;
 		cpu.af.a = cpu.af.a ^ operand;
 		eval_Z_flag(cpu.af.a);
@@ -1172,10 +1168,10 @@ void cpu_handle_opcode(void)
 	{
 		uint8_t operand_lut[8] = {
 			cpu.bc.b, cpu.bc.c, cpu.de.d, cpu.de.e, 
-			cpu.hl.h, cpu.hl.l, bus_get_memory(cpu.hl.hl), cpu.af.a, 
+			cpu.hl.h, cpu.hl.l,        0, cpu.af.a, 
 		};
 		uint8_t i = (opcode & 0x07);
-		uint8_t operand = operand_lut[i];
+		uint8_t operand = (6 == i) ? bus_get_memory(cpu.hl.hl) : operand_lut[i];
 		uint8_t duration = (i == 6) ? 8 : 4;
 		uint8_t result = cpu.af.a - operand;
 		eval_Z_flag(result);
@@ -1248,7 +1244,7 @@ void cpu_handle_opcode(void)
 	{
 		uint8_t src_lut[8] = {
 			cpu.bc.b, cpu.bc.c, cpu.de.d, cpu.de.e,
-			cpu.hl.h, cpu.hl.l, bus_get_memory(cpu.hl.hl), cpu.af.a
+			cpu.hl.h, cpu.hl.l,        0, cpu.af.a
 		};
 		uint8_t *dst_lut[8] = {
 			&cpu.bc.b, &cpu.bc.c, &cpu.de.d, &cpu.de.e,
@@ -1256,7 +1252,7 @@ void cpu_handle_opcode(void)
 		};
 		uint8_t r0 = (opcode & 0x38) >> 3;
 		uint8_t r1 = (opcode & 0x07) >> 0;
-		uint8_t src = src_lut[r1];
+		uint8_t src = (6 == r1) ? bus_get_memory(cpu.hl.hl) : src_lut[r1];
 		uint8_t *dst = dst_lut[r0];
 		uint8_t duration = ((6 == r0) || (6 == r1)) ? 8 : 4;
 		*dst = src;
@@ -1654,7 +1650,7 @@ void cpu_handle_opcode(void)
 
 }
 
-void cpu_print_state(void)
+static void cpu_print_state(void)
 {
 	bool zf,nf,hf,cf;
 	zf = (0 != (cpu.af.f & FLAG_Z));
@@ -1676,7 +1672,7 @@ void cpu_print_state(void)
 	printf("BC: %04x, DE: %04x, HL: %04x\n", cpu.bc.bc, cpu.de.de, cpu.hl.hl);
 }
 
-bool cpu_handle_interrupt(void)
+static bool cpu_handle_interrupt(void)
 {
 	static enum
 	{
@@ -1750,6 +1746,25 @@ bool cpu_handle_interrupt(void)
 	}
 
 	return isr_handled;
+}
+
+/*---------------------------------------------------------------------*
+ *  public functions                                                   *
+ *---------------------------------------------------------------------*/
+void gbc_cpu_init(void)
+{
+	memset(&cpu, 0, sizeof(cpu));
+	
+	/* CGB hardware can be detected by examining the CPU accumulator (A-register) directly after startup.
+	   A value of $11 indicates CGB (or GBA) hardware, if so, CGB functions can be used (if unlocked, see above).
+	   When A=$11, you may also examine Bit 0 of the CPUs B-Register to separate between CGB (bit cleared) and
+	   GBA (bit set), by that detection it is possible to use “repaired” color palette data matching for GBA displays.
+	*/
+	cpu.af.a = 0;//0x11;
+
+	cpu.pc = 0x0100;
+
+	return;
 }
 
 void gbc_cpu_tick(void)

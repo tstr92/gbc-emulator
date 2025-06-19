@@ -8,8 +8,12 @@ OBJDUMP = $(COMPILER)/objdump
 BIN	= $(COMPILER)/objcopy
 
 SDL_PATH=/c/libs/SDL2-2.32.0/x86_64-w64-mingw32
-SDL_INC=$(SDL_PATH)/include
+SDL_INC=$(SDL_PATH)/include/SDL2
 SDL_LIB=$(SDL_PATH)/bin
+
+SDL_TTF_PATH=/c/libs/SDL2_ttf-2.24.0/x86_64-w64-mingw32
+SDL_TTF_INC=$(SDL_TTF_PATH)/include/SDL2
+SDL_TTF_LIB=$(SDL_TTF_PATH)/bin
 
 OUTDIR = .release
 
@@ -35,8 +39,9 @@ OBJS = $(addprefix $(OUTDIR)/,$(SRC:.c=.o))
 
 CFLAGS = \
 		-I$(SDL_INC) \
+		-I$(SDL_TTF_INC) \
 		-DDEBUG=$(DEBUG) \
-		-DUSE_0xE000_AS_PUTC_DEVICE=1 \
+		-DUSE_0xE000_AS_PUTC_DEVICE=0 \
 		-ffunction-sections \
 		-fdata-sections \
 		-g \
@@ -46,7 +51,9 @@ CFLAGS = \
 
 LDFLAGS = \
 		-L$(SDL_LIB) \
+		-L$(SDL_TTF_LIB) \
 		-lSDL2 \
+		-lSDL2_ttf \
 		-ffunction-sections \
 		-fdata-sections \
 		-Wl,-gc-sections

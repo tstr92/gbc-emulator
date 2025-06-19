@@ -1,8 +1,7 @@
 
 /*---------------------------------------------------------------------*
  *                                                                     *
- *                         SM83 Memory Bus                             *
- *                                                                     *
+ *                           GBC Emulator                              *
  *                                                                     *
  *       project: Gameboy Color Emulator                               *
  *   module name: main.c                                               *
@@ -15,7 +14,8 @@
  *  include files                                                      *
  *---------------------------------------------------------------------*/
 #define SDL_MAIN_HANDLED
-#include <SDL2/SDL.h>
+#include <SDL.h>
+#include <SDL_ttf.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
@@ -27,41 +27,54 @@
  *---------------------------------------------------------------------*/
 #define TITLE "Tib's GBC Emul"
 
-#define SCALING_FACTOR 2
+#define SCALING_FACTOR 3
 #define WIDTH (160 * SCALING_FACTOR)
 #define HEIGHT (144 * SCALING_FACTOR)
+#define MENU_OFFSET_X (WIDTH / 20)
+#define MENU_OFFSET_Y (HEIGHT / 20)
+#define FONTSIZE (HEIGHT / 16)
+
+#define MENU_TIMER_INTERVAL_MS 16
 
 #define SAMPLE_RATE 32768
 #define BUFFER_SIZE 550
 
-#define USE_PRINTF 0
+#define USE_PRINTF 1
 #if (0 != USE_PRINTF)
-#define debug_printf(fmt, ...) printf(fmt, __VA_ARGS__)
+#define debug_printf(...) printf(__VA_ARGS__)
 #else
-#define debug_printf(fmt, ...) do {} while (0)
+#define debug_printf(...) do {} while (0)
 #endif
 
 typedef struct
 {
-    SDL_Window* window;
-    SDL_Renderer* renderer;
-    Uint32* screen_buffer;
-    SDL_Texture* texture;
+    SDL_Window *window;
+    SDL_Renderer *renderer;
+    Uint32 *screen_buffer;
+    SDL_Texture *texture;
     SDL_AudioDeviceID audio_device;
     Uint32 frame_draw_event;
+    SDL_TimerID menu_timer;
+    
+    /* menu */
+    SDL_Rect menu_overlay;
+    TTF_Font *font;
 } sdl_rsc_t;
 
 typedef struct
 {
-    bool esc;
-    bool space;
-    bool a;
-    bool b;
-    bool up;
-    bool down;
-    bool left;
-    bool right;
-} keys_t;
+    SDL_KeyCode keyCode;
+    bool state;
+} key_t;
+
+#define GBC_KEY_START  0
+#define GBC_KEY_SELECT 1
+#define GBC_KEY_A      2
+#define GBC_KEY_B      3
+#define GBC_KEY_UP     4
+#define GBC_KEY_DOWN   5
+#define GBC_KEY_LEFT   6
+#define GBC_KEY_RIGHT  7
 
 /*---------------------------------------------------------------------*
  *  external declarations                                              *
@@ -74,21 +87,37 @@ typedef struct
 /*---------------------------------------------------------------------*
  *  private data                                                       *
  *---------------------------------------------------------------------*/
-static SDL_mutex* emulator_data_mutex;
-static SDL_mutex* emulator_joypad_mutex;
-static SDL_cond* emulator_data_cond;
-static int emulator_data_collected = 0;
-static keys_t keys;
+static SDL_mutex* gEmulatorDataMutex;
+static SDL_mutex* gEmulatorJoypadMutex;
+static SDL_cond* gEmulatorDataCond;
+static int gEmulatorDataCollected = 0;
+static int gActiveMenuLine = 0;
+static uint8_t gEmulatorSpeed = 10; // 10 ... 20 = 100% ... 200%
+static int32_t gVolume = 50;
+
+static key_t keys[8] =
+{
+    (key_t) { .keyCode = SDLK_RETURN, .state = false },
+    (key_t) { .keyCode = SDLK_SPACE,  .state = false },
+    (key_t) { .keyCode = SDLK_a,      .state = false },
+    (key_t) { .keyCode = SDLK_b,      .state = false },
+    (key_t) { .keyCode = SDLK_UP,     .state = false },
+    (key_t) { .keyCode = SDLK_DOWN,   .state = false },
+    (key_t) { .keyCode = SDLK_LEFT,   .state = false },
+    (key_t) { .keyCode = SDLK_RIGHT,  .state = false },
+};
 
 /*---------------------------------------------------------------------*
  *  private function declarations                                      *
  *---------------------------------------------------------------------*/
-static void audio_callback     (void* userdata, Uint8* stream, int len);
-static int  emulator_thread_fn (void *data);
-static int  init_sdl_rsc       (sdl_rsc_t *p_sdl_rsc);
-static void destroy_sdl_rsc    (sdl_rsc_t *p_sdl_rsc);
-static void render             (sdl_rsc_t *p_sdl_rsc);
-static void fps                (sdl_rsc_t *p_sdl_rsc);
+static void   audio_callback     (void* userdata, Uint8* stream, int len);
+static Uint32 timerCallback      (Uint32 interval, void* param);
+static int    emulator_thread_fn (void *data);
+static int    init_sdl_rsc       (sdl_rsc_t *p_sdl_rsc);
+static void   destroy_sdl_rsc    (sdl_rsc_t *p_sdl_rsc);
+static void   handle_menu        (sdl_rsc_t *p_sdl_rsc, SDL_Event event);
+static void   render             (sdl_rsc_t *p_sdl_rsc);
+static void   fps                (sdl_rsc_t *p_sdl_rsc);
 
 /*---------------------------------------------------------------------*
  *  private functions                                                  *
@@ -109,8 +138,11 @@ static void audio_callback(void* userdata, Uint8* stream, int len)
     {
         for (i = 0; i < copy_len; i++)
         {
-            out[i*2+0] = (((Sint16) l[i]) - 30) << 10;
-            out[i*2+1] = (((Sint16) r[i]) - 30) << 10;
+            int32_t local_l, local_r;
+            local_l = (int32_t) ((((Sint16) l[i]) - 30) << 10);
+            local_r = (int32_t) ((((Sint16) r[i]) - 30) << 10);
+            out[i*2+0] = (Sint16) ((local_l * gVolume) / 100);
+            out[i*2+1] = (Sint16) ((local_r * gVolume) / 100);
         }
     }
     else
@@ -123,12 +155,22 @@ static void audio_callback(void* userdata, Uint8* stream, int len)
     event.type = p_sdl_rsc->frame_draw_event;
     SDL_PushEvent(&event);
 
-    SDL_LockMutex(emulator_data_mutex);
-    emulator_data_collected = 1;
-    SDL_CondSignal(emulator_data_cond);  // Signal the waiting thread
-    SDL_UnlockMutex(emulator_data_mutex);
+    SDL_LockMutex(gEmulatorDataMutex);
+    gEmulatorDataCollected = 1;
+    SDL_CondSignal(gEmulatorDataCond);  // Signal the waiting thread
+    SDL_UnlockMutex(gEmulatorDataMutex);
 
     return;
+}
+
+static Uint32 timerCallback(Uint32 interval, void* param)
+{
+    sdl_rsc_t *p_sdl_rsc = (sdl_rsc_t *) param;
+    SDL_Event event;
+    SDL_memset(&event, 0, sizeof(event));
+    event.type = p_sdl_rsc->frame_draw_event;
+    SDL_PushEvent(&event);
+    return MENU_TIMER_INTERVAL_MS; // repeat
 }
 
 static int emulator_thread_fn(void *data)
@@ -141,9 +183,15 @@ static int emulator_thread_fn(void *data)
 static int init_sdl_rsc(sdl_rsc_t *p_sdl_rsc)
 {
     // Initialize SDL
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0)
+    if (0 != SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER))
     {
         fprintf(stderr, "SDL_Init Error: %s\n", SDL_GetError());
+        return 1;
+    }
+
+    if (0 != TTF_Init())
+    {
+        fprintf(stderr, "TTF_Init Error: %s\n", TTF_GetError());
         return 1;
     }
 
@@ -208,6 +256,13 @@ static int init_sdl_rsc(sdl_rsc_t *p_sdl_rsc)
         return 1;
     }
 
+    p_sdl_rsc->font = TTF_OpenFont("Flexi_IBM_VGA_False.ttf", FONTSIZE);
+    if (!p_sdl_rsc->font)
+    {
+        fprintf(stderr, "Failed to open font: %s\n", TTF_GetError());
+        return 1;
+    }
+
     return 0;
 }
 
@@ -243,11 +298,110 @@ static void destroy_sdl_rsc(sdl_rsc_t *p_sdl_rsc)
         p_sdl_rsc->audio_device = 0;
     }
 
+    if(p_sdl_rsc->font)
+    {
+        TTF_CloseFont(p_sdl_rsc->font);
+        p_sdl_rsc->font = NULL;
+    }
+
     // no cleanup needed for p_sdl_rsc->frame_draw_event
 
     SDL_Quit();
 
     return;
+}
+
+
+void renderTextLine(sdl_rsc_t *p_sdl_rsc, const char* text, SDL_Color color, int lineNum)
+{
+    int x, y;
+    SDL_Surface* surface = TTF_RenderText_Blended(p_sdl_rsc->font, text, color);
+    SDL_Texture* texture = SDL_CreateTextureFromSurface(p_sdl_rsc->renderer, surface);
+
+    if (0 == lineNum)
+    {
+        /* center header */
+        x = p_sdl_rsc->menu_overlay.x + p_sdl_rsc->menu_overlay.w / 2 - surface->w / 2;
+    }
+    else
+    {
+        /* left align options */
+        x = p_sdl_rsc->menu_overlay.x + MENU_OFFSET_X;
+    }
+    y = p_sdl_rsc->menu_overlay.y + (lineNum + 1) * FONTSIZE;
+
+    SDL_Rect dst = { x, y, surface->w, surface->h };
+
+    SDL_RenderCopy(p_sdl_rsc->renderer, texture, NULL, &dst);
+    SDL_FreeSurface(surface);
+    SDL_DestroyTexture(texture);
+
+    return;
+}
+
+static void handle_menu(sdl_rsc_t *p_sdl_rsc, SDL_Event event)
+{
+    char menu_txt[3][64];
+
+    /* prepare menu text */
+    snprintf(&menu_txt[0][0], sizeof(menu_txt[0]), "Settings");
+    snprintf(&menu_txt[1][0], sizeof(menu_txt[1]), "Emulator Speed        %1.1f", ((float)gEmulatorSpeed / 10.0));
+    snprintf(&menu_txt[2][0], sizeof(menu_txt[1]), "Volume                %3u", gVolume);
+    
+
+    /* copy last screen */
+    SDL_RenderClear(p_sdl_rsc->renderer);
+    SDL_RenderCopy(p_sdl_rsc->renderer, p_sdl_rsc->texture, NULL, NULL);
+
+    /* menu box */
+    SDL_SetRenderDrawColor(p_sdl_rsc->renderer, 0, 0, 0, 200);
+    SDL_RenderFillRect(p_sdl_rsc->renderer, &p_sdl_rsc->menu_overlay);
+    for (int i = 0; i < _countof(menu_txt); i++)
+    {
+        SDL_Color color;
+        color = (gActiveMenuLine == i)            ? 
+                (SDL_Color) { 255, 255,   0, 255 } :
+                (SDL_Color) { 255, 255, 255, 255 } ;
+        renderTextLine(p_sdl_rsc, menu_txt[i], color, i);
+    }
+    
+    if (SDL_KEYDOWN == event.type)
+    {
+        if (1 == gActiveMenuLine)
+        {
+            if ((SDLK_LEFT == event.key.keysym.sym) && (10 < gEmulatorSpeed))
+            {
+                gEmulatorSpeed--;
+            }
+            else if ((SDLK_RIGHT == event.key.keysym.sym) && (20 > gEmulatorSpeed))
+            {
+                gEmulatorSpeed++;
+            }
+        }
+
+        if (2 == gActiveMenuLine)
+        {
+            if ((SDLK_LEFT == event.key.keysym.sym) && (0 < gVolume))
+            {
+                gVolume--;
+            }
+            else if ((SDLK_RIGHT == event.key.keysym.sym) && (100 > gVolume))
+            {
+                gVolume++;
+            }
+        }
+
+        if ((SDLK_UP == event.key.keysym.sym) && (1 < gActiveMenuLine))
+        {
+            gActiveMenuLine--;
+        }
+        else if ((SDLK_DOWN == event.key.keysym.sym) && (2 > gActiveMenuLine))
+        {
+            gActiveMenuLine++;
+        }
+    }
+
+    SDL_RenderPresent(p_sdl_rsc->renderer);
 }
 
 static void render(sdl_rsc_t *p_sdl_rsc)
@@ -269,11 +423,8 @@ static void render(sdl_rsc_t *p_sdl_rsc)
 
     SDL_UpdateTexture(p_sdl_rsc->texture, NULL, p_sdl_rsc->screen_buffer, WIDTH * sizeof(Uint32));
 
-    // Clear the renderer
     SDL_RenderClear(p_sdl_rsc->renderer);
-    // Copy the texture to the renderer
     SDL_RenderCopy(p_sdl_rsc->renderer, p_sdl_rsc->texture, NULL, NULL);
-    // Present the renderer
     SDL_RenderPresent(p_sdl_rsc->renderer);
 
     return;
@@ -306,14 +457,14 @@ static void fps(sdl_rsc_t *p_sdl_rsc)
 void emulator_wait_for_data_collection(void)
 {
     // return;
-    SDL_LockMutex(emulator_data_mutex);
-    while (!emulator_data_collected)
+    SDL_LockMutex(gEmulatorDataMutex);
+    while (!gEmulatorDataCollected)
     {
         /* Wait until signaled */
-        SDL_CondWait(emulator_data_cond, emulator_data_mutex);
+        SDL_CondWait(gEmulatorDataCond, gEmulatorDataMutex);
     }
-    emulator_data_collected = 0;
-    SDL_UnlockMutex(emulator_data_mutex);
+    gEmulatorDataCollected = 0;
+    SDL_UnlockMutex(gEmulatorDataMutex);
 }
 
 uint32_t platform_getSysTick_ms(void)
@@ -324,22 +475,25 @@ uint32_t platform_getSysTick_ms(void)
 uint8_t gbc_joypad_buttons_cb(void)
 {
     uint8_t ret = 0;
-    keys_t keys_local;
 
-    SDL_LockMutex(emulator_joypad_mutex);
-    keys_local = keys;
-    SDL_UnlockMutex(emulator_joypad_mutex);
-
-    ret |= keys.esc   ? GBC_JOYPAD_START  : 0;
-    ret |= keys.space ? GBC_JOYPAD_SELECT : 0;
-    ret |= keys.a     ? GBC_JOYPAD_A      : 0;
-    ret |= keys.b     ? GBC_JOYPAD_B      : 0;
-    ret |= keys.left  ? GBC_JOYPAD_LEFT   : 0;
-    ret |= keys.right ? GBC_JOYPAD_RIGHT  : 0;
-    ret |= keys.up    ? GBC_JOYPAD_UP     : 0;
-    ret |= keys.down  ? GBC_JOYPAD_DOWN   : 0;
+    SDL_LockMutex(gEmulatorJoypadMutex);
+    ret |= keys[GBC_KEY_START ].state ? GBC_JOYPAD_START  : 0;
+    ret |= keys[GBC_KEY_SELECT].state ? GBC_JOYPAD_SELECT : 0;
+    ret |= keys[GBC_KEY_A     ].state ? GBC_JOYPAD_A      : 0;
+    ret |= keys[GBC_KEY_B     ].state ? GBC_JOYPAD_B      : 0;
+    ret |= keys[GBC_KEY_UP    ].state ? GBC_JOYPAD_UP     : 0;
+    ret |= keys[GBC_KEY_DOWN  ].state ? GBC_JOYPAD_DOWN   : 0;
+    ret |= keys[GBC_KEY_LEFT  ].state ? GBC_JOYPAD_LEFT   : 0;
+    ret |= keys[GBC_KEY_RIGHT ].state ? GBC_JOYPAD_RIGHT  : 0;
+    SDL_UnlockMutex(gEmulatorJoypadMutex);
 
     return ret;
+}
+
+
+uint8_t emulator_get_speed(void)
+{
+    return gEmulatorSpeed;
 }
 
 /*---------------------------------------------------------------------*
@@ -365,6 +519,7 @@ int main(int argc, char* argv[])
         .renderer      = NULL,
         .screen_buffer = NULL,
         .texture       = NULL,
+        .menu_overlay  = { MENU_OFFSET_X, MENU_OFFSET_Y, WIDTH - 2 * MENU_OFFSET_X, HEIGHT - 2 * MENU_OFFSET_Y },
     };
 
     if (init_sdl_rsc(&sdl_rsc))
@@ -374,58 +529,64 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    emulator_joypad_mutex = SDL_CreateMutex();
-    emulator_data_mutex = SDL_CreateMutex();
-    emulator_data_cond = SDL_CreateCond();
-
-    SDL_PauseAudioDevice(sdl_rsc.audio_device, 0); // Start playing
+    gEmulatorJoypadMutex = SDL_CreateMutex();
+    gEmulatorDataMutex = SDL_CreateMutex();
+    gEmulatorDataCond = SDL_CreateCond();
 
     SDL_Thread* emulator_thread = SDL_CreateThread(emulator_thread_fn, "EmulatorThread", NULL);
+    SDL_PauseAudioDevice(sdl_rsc.audio_device, 0); // Start playing
 
     // Main loop
     SDL_Event e;
+    bool menu = false;
     while (SDL_WaitEvent(&e))
     {
-        if (e.type == sdl_rsc.frame_draw_event)
+        if (menu)
         {
-            render(&sdl_rsc);
+            handle_menu(&sdl_rsc, e);
             fps(&sdl_rsc);
         }
-        else if (e.type == SDL_KEYDOWN)
+
+        if (e.type == sdl_rsc.frame_draw_event)
         {
-            SDL_LockMutex(emulator_joypad_mutex);
-            switch (e.key.keysym.sym)
+            if (!menu)
             {
-            case SDLK_ESCAPE: keys.esc   = true; break;
-            case SDLK_SPACE : keys.space = true; break;
-            case SDLK_a     : keys.a     = true; break;
-            case SDLK_b     : keys.b     = true; break;
-            case SDLK_LEFT  : keys.left  = true; break;
-            case SDLK_RIGHT : keys.right = true; break;
-            case SDLK_UP    : keys.up    = true; break;
-            case SDLK_DOWN  : keys.down  = true; break;
-            default:
-                break;
+                render(&sdl_rsc);
+                fps(&sdl_rsc);
             }
-            SDL_UnlockMutex(emulator_joypad_mutex);
         }
-        else if (e.type == SDL_KEYUP)
+        else if ((e.type == SDL_KEYDOWN) && (SDLK_ESCAPE == e.key.keysym.sym))
         {
-            SDL_LockMutex(emulator_joypad_mutex);
-            switch (e.key.keysym.sym)
+            if (menu)
             {
-            case SDLK_ESCAPE: keys.esc   = false; break;
-            case SDLK_SPACE : keys.space = false; break;
-            case SDLK_a     : keys.a     = false; break;
-            case SDLK_b     : keys.b     = false; break;
-            case SDLK_LEFT  : keys.left  = false; break;
-            case SDLK_RIGHT : keys.right = false; break;
-            case SDLK_UP    : keys.up    = false; break;
-            case SDLK_DOWN  : keys.down  = false; break;
-            default:
-                break;
+                menu = false;
+                SDL_PauseAudioDevice(sdl_rsc.audio_device, 0); // Start Emulator
+                SDL_SetRenderDrawBlendMode(sdl_rsc.renderer, SDL_BLENDMODE_NONE);
+                SDL_RemoveTimer(sdl_rsc.menu_timer);
             }
-            SDL_UnlockMutex(emulator_joypad_mutex);
+            else
+            {
+                menu = true;
+                gActiveMenuLine = 1;
+                SDL_PauseAudioDevice(sdl_rsc.audio_device, 1); // Pause Emulator
+                SDL_SetRenderDrawBlendMode(sdl_rsc.renderer, SDL_BLENDMODE_BLEND);
+                sdl_rsc.menu_timer = SDL_AddTimer(MENU_TIMER_INTERVAL_MS, timerCallback, &sdl_rsc);
+            }
+        }
+        else if ((e.type == SDL_KEYDOWN) ||
+                 (e.type == SDL_KEYUP  ))
+        {
+            bool keyPressed = (e.type == SDL_KEYDOWN);
+            SDL_LockMutex(gEmulatorJoypadMutex);
+            for (int key = 0; key < _countof(keys); key++)
+            {
+                if (keys[key].keyCode == e.key.keysym.sym)
+                {
+                    keys[key].state = keyPressed;
+                    break;
+                }
+            }
+            SDL_UnlockMutex(gEmulatorJoypadMutex);
         }
         else if (e.type == SDL_QUIT)
         {
@@ -435,9 +596,9 @@ int main(int argc, char* argv[])
 
     // Cleanup
     destroy_sdl_rsc(&sdl_rsc);
-    SDL_DestroyCond(emulator_data_cond);
-    SDL_DestroyMutex(emulator_data_mutex);
-    SDL_DestroyMutex(emulator_joypad_mutex);
+    SDL_DestroyCond(gEmulatorDataCond);
+    SDL_DestroyMutex(gEmulatorDataMutex);
+    SDL_DestroyMutex(gEmulatorJoypadMutex);
 
     return 0;
 }

@@ -22,6 +22,7 @@
 #include "cpu.h"
 #include "timer.h"
 #include "apu.h"
+#include "debug.h"
 
 /*---------------------------------------------------------------------*
  *  local definitions                                                  *
@@ -58,6 +59,7 @@ int emulator_load_game(char *fileName)
 		return 1;
 	}
 
+	gbc_cpu_init();
 	bus_init();
 	gbc_apu_init();
 
@@ -88,6 +90,11 @@ void emulator_run(void)
 			break;
 		}
 	}
+}
+
+__attribute__((weak)) uint8_t emulator_get_speed(void)
+{
+    return 10;
 }
 
 /*---------------------------------------------------------------------*

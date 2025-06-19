@@ -44,6 +44,7 @@ void emulator_run(void);
 void emulator_wait_for_data_collection(void);
 void emulator_get_audio_data(uint8_t *ch_r, uint8_t *ch_l, size_t *num_samples);
 void emulator_get_video_data(uint32_t *data);
+uint8_t emulator_get_speed(void);
 
 /* Callback-Function that reads the current Button-states.
  * Use Defines GBC_JOYPAD_* to set joypad data.

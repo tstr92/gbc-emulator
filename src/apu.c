@@ -644,7 +644,7 @@ uint8_t gbc_apu_get_memory(uint16_t addr)
 
     ret = 0;
 
-    printf("read %04x\n", addr);
+    // printf("read %04x\n", addr);
 
     switch (addr)
     {

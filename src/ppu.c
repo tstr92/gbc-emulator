@@ -165,6 +165,7 @@ typedef struct
     uint32_t line_dot_cnt;
     uint32_t lx;
     uint8_t pixel_delay;
+    uint8_t obj_size;
 } ppu_state_t;
 
 typedef struct
@@ -335,8 +336,25 @@ void ppu_pixel_fetcher_do(void)
     {
     case pfs_get_tile_0_e:
     {
-        pixel_fetcher.obj_tile_number = ppu.scobj.sprites[ppu.scobj.rd].tile_idx;
-        pixel_fetcher.tile_y_offset = 2 * (ppu.ly - (ppu.scobj.sprites[ppu.scobj.rd].y_pos - 16));
+        pixel_fetcher.tile_y_offset = ppu.ly - (ppu.scobj.sprites[ppu.scobj.rd].y_pos - 16);
+        if (16 == ppu_state.obj_size)
+        {
+            if (8 <= pixel_fetcher.tile_y_offset)
+            {
+                /* bottom tile */
+                pixel_fetcher.obj_tile_number = (ppu.scobj.sprites[ppu.scobj.rd].tile_idx & 0xFE);
+                pixel_fetcher.tile_y_offset -= 8;
+            }
+            else
+            {
+                /* top tile */
+                pixel_fetcher.obj_tile_number = (ppu.scobj.sprites[ppu.scobj.rd].tile_idx | 0x01);
+            }
+        }
+        else
+        {
+            pixel_fetcher.obj_tile_number = ppu.scobj.sprites[ppu.scobj.rd].tile_idx;
+        }
         pixel_fetcher.tile_hi_lo = 0;
 
         pixel_fetcher.obj_state++;
@@ -348,7 +366,7 @@ void ppu_pixel_fetcher_do(void)
     {
         uint8_t *p_window_tile_data = window_tile_data_0;
         uint8_t data;
-        data = p_window_tile_data[pixel_fetcher.obj_tile_number * 16 + pixel_fetcher.tile_y_offset + pixel_fetcher.tile_hi_lo];
+        data = p_window_tile_data[pixel_fetcher.obj_tile_number * 16 + 2 * pixel_fetcher.tile_y_offset + pixel_fetcher.tile_hi_lo];
         pixel_fetcher.obj_tile_data[pixel_fetcher.tile_hi_lo] = data;
         pixel_fetcher.tile_hi_lo++;
 
@@ -364,15 +382,33 @@ void ppu_pixel_fetcher_do(void)
         if (ppu_pixel_fifo_empty(&pixel_fetcher.obj_fifo))
         {
             int numPixels = 8 - ((pixel_fetcher.x + 8) - ppu.scobj.sprites[ppu.scobj.rd].x_pos);
-            for (int i = (numPixels - 1); i >= 0; i--)
+            if (ppu.scobj.sprites[ppu.scobj.rd].x_flip)
             {
-                pixel_t pixel = (pixel_t)
+                for (int i = 0; i <= (numPixels - 1); i++)
                 {
-                    .color       = ((pixel_fetcher.obj_tile_data[0] & (1<<i)) ? 0x01 : 0x00) |
-                                   ((pixel_fetcher.obj_tile_data[1] & (1<<i)) ? 0x02 : 0x00) ,
-                };
-                ppu_pixel_fifo_push(&pixel_fetcher.obj_fifo, pixel);
+                    pixel_t pixel = (pixel_t)
+                    {
+                        .color       = ((pixel_fetcher.obj_tile_data[0] & (1<<i)) ? 0x01 : 0x00) |
+                                       ((pixel_fetcher.obj_tile_data[1] & (1<<i)) ? 0x02 : 0x00) ,
+                        .sprite_prio = ppu.scobj.sprites[ppu.scobj.rd].priority,
+                    };
+                    ppu_pixel_fifo_push(&pixel_fetcher.obj_fifo, pixel);
+                }
             }
+            else
+            {
+                for (int i = (numPixels - 1); i >= 0; i--)
+                {
+                    pixel_t pixel = (pixel_t)
+                    {
+                        .color       = ((pixel_fetcher.obj_tile_data[0] & (1<<i)) ? 0x01 : 0x00) |
+                                       ((pixel_fetcher.obj_tile_data[1] & (1<<i)) ? 0x02 : 0x00) ,
+                        .sprite_prio = ppu.scobj.sprites[ppu.scobj.rd].priority,
+                    };
+                    ppu_pixel_fifo_push(&pixel_fetcher.obj_fifo, pixel);
+                }
+            }
+            if (ppu.scobj.sprites[ppu.scobj.rd].y_flip) printf("yf\n");
             ppu.scobj.rd++;
             pixel_fetcher.obj_state = pfs_suspended_e;
             pixel_fetcher.bg_state = pfs_get_tile_0_e;
@@ -522,13 +558,25 @@ void gbc_ppu_tick(void)
     {
         case mode2_oam_scan:
         {
+            if (0 == ppu_state.line_dot_cnt)
+            {
+                if (ppu.lcdc & LCDC_OBJ_SIZE)
+                {
+                    printf("16\n");
+                    ppu_state.obj_size = 16;
+                }
+                else
+                {
+                    ppu_state.obj_size = 8;
+                }
+            }
+
             if (0 == (ppu_state.line_dot_cnt & 1))
             {
                 int idx = (ppu_state.line_dot_cnt >> 1);
-                int obj_size = (ppu.lcdc & LCDC_OBJ_SIZE) ? 16 : 8;
                 if (( 10 > ppu.scobj.wr)                                          &&
-                    ((ppu.object_attributes[idx].y_pos - 16 +        0) <= ppu.ly) &&
-                    ((ppu.object_attributes[idx].y_pos - 16 + obj_size) >  ppu.ly))
+                    ((ppu.object_attributes[idx].y_pos - 16 +                  0) <= ppu.ly) &&
+                    ((ppu.object_attributes[idx].y_pos - 16 + ppu_state.obj_size) >  ppu.ly))
                 {
                     ppu.scobj.sprites[ppu.scobj.wr++] = ppu.object_attributes[idx];
                 }
@@ -568,7 +616,15 @@ void gbc_ppu_tick(void)
                 {
                     if (ppu_pixel_fifo_pop(&pixel_fetcher.bg_fifo , &pixel))
                     {
-                        ppu_pixel_fifo_pop(&pixel_fetcher.obj_fifo, &pixel);
+                        pixel_t sprite_pixel;
+                        if (ppu_pixel_fifo_pop(&pixel_fetcher.obj_fifo, &sprite_pixel))
+                        {
+                            if (!((0 == sprite_pixel.color) ||
+                                  (sprite_pixel.bg_prio && (0 != pixel.color))))
+                            {
+                                pixel = sprite_pixel;
+                            }
+                        }
                         screen[ppu.ly * 160 + ppu_state.lx].raw = debug_palette[pixel.color & 0x03];
                         ppu_state.lx++;
                     }
@@ -825,6 +881,7 @@ void gbc_ppu_set_memory(uint16_t addr, uint8_t val)
 
         case LCDC:
         {
+            printf("lcdc=%02x\n", val);
             ppu.lcdc = val;
         }
         break;
