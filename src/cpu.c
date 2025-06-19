@@ -18,7 +18,9 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include <stdio.h>
+
+#include "debug.h"
+#include "bus.h"
 
 /*---------------------------------------------------------------------*
  *  local definitions                                                  *
@@ -33,14 +35,6 @@
 #define HIGH_BYTE(_uint16) ((_uint16 & 0xff00) >> 8)
 #define LOW_BYTE(_uint16) ((_uint16 & 0x00ff) >> 0)
 #define IS_IN_RANGE(_val, _min, _max) ((_val >= _min) && (_val <= _max))
-
-#define DBG_ERROR() printf("Error: %s:%d\n", __FUNCTION__, __LINE__)
-
-#if (0 < DEBUG)
-#define debug_printf(...) printf(__VA_ARGS__)
-#else
-#define debug_printf(...) do {} while (0)
-#endif
 
 /*---------------------------------------------------------------------*
  *  local data types                                                   *
@@ -100,23 +94,6 @@ typedef struct
 	} hl;
 	uint16_t sp;	// stack pointer
 	uint16_t pc;	// program counter
-	
-	// complete memory map
-#if (0 < BUILD_TEST_DLL)
-	uint8_t rom         [0x10000];
-#else
-	uint8_t rom         [0x4000];
-	uint8_t switch_rom  [0x4000];
-	uint8_t video_ram   [0x2000];
-	uint8_t switch_ram  [0x2000];
-	uint8_t int_ram0    [0x1000];
-	uint8_t int_ram1    [0x1000];
-	uint8_t reserved0   [0x1E00];
-	uint8_t sprite_attr [0x00A0];
-	uint8_t reserved1   [0x0060];
-	uint8_t dev_map     [0x0080];
-	uint8_t int_en      [0x0080];
-#endif
 
 	uint64_t cycle_cnt;
 	uint64_t next_instruction;
@@ -214,53 +191,6 @@ static sm83_t cpu;
 /*---------------------------------------------------------------------*
  *  public functions                                                   *
  *---------------------------------------------------------------------*/
-uint8_t cpu_get_memory(uint16_t addr)
-{
-	uint8_t ret = 0;
-
-#if (0 < BUILD_TEST_DLL)
-	ret = ((uint8_t *) &cpu.rom[0])[addr];
-#else
-	if (((addr < 0xFEA0 ) || (addr > 0xFEFF)) &&
-	    ((addr < 0xE000 ) || (addr > 0xFDFF)))
-	{
-		ret = ((uint8_t *) &cpu.rom[0])[addr];
-	}
-	else
-	{
-		debug_printf ("illegal memory access at 0x%04x.\n", addr);
-	}
-#endif
-
-	return ret;
-}
-
-void cpu_set_memory(uint16_t addr, uint8_t val)
-{
-#if (0 < BUILD_TEST_DLL)
-	((uint8_t *) &cpu.rom[0])[addr] = val;
-#else
-	if (((addr < 0xFEA0 ) || (addr > 0xFEFF)) &&
-	    ((addr < 0xE000 ) || (addr > 0xFDFF)))
-	{
-		((uint8_t *) &cpu.rom[0])[addr] = val;
-	}
-#if (USE_0xE000_AS_PUTC_DEVICE)
-	else if (addr == 0xE000)
-	{
-		putc(val, stdout);
-		fflush(stdout);
-	}
-#endif
-	else
-	{
-		debug_printf ("illegal memory access at 0x%04x.\n", addr);
-	}
-#endif
-
-	debug_printf("\nwrote %02x to %04x\n", val, addr);
-}
-
 void cpu_init(void)
 {
 	memset(&cpu, 0, sizeof(cpu));
@@ -423,7 +353,7 @@ void cpu_handle_opcode(void)
 	uint8_t opcode;
 	opcode_t opcode_type;
 
-	opcode = cpu_get_memory(cpu.pc);
+	opcode = bus_get_memory(cpu.pc);
 	opcode_type = opcode_types[opcode];
 
 	switch (opcode_type)
@@ -597,7 +527,7 @@ void cpu_handle_opcode(void)
 
 	case OPC_CB:
 	{
-		uint8_t opcode2 = cpu_get_memory(cpu.pc + 1);;
+		uint8_t opcode2 = bus_get_memory(cpu.pc + 1);;
 		opcode2_t opcode_type2 = opcode_types2[opcode2];
 		uint8_t *target_lut[8] = {
 			&cpu.bc.b, &cpu.bc.c, &cpu.de.d, &cpu.de.e,
@@ -726,10 +656,10 @@ void cpu_handle_opcode(void)
 		
 		case OPC_RLC2:
 		{
-			uint8_t operand = cpu_get_memory(cpu.hl.hl);
+			uint8_t operand = bus_get_memory(cpu.hl.hl);
 			bool bit7 = (0 != (operand & (1<<7)));
 			uint8_t result = (operand << 1) | (bit7 ? 1 : 0);
-			cpu_set_memory(cpu.hl.hl, result);
+			bus_set_memory(cpu.hl.hl, result);
 			eval_Z_flag(result);
 			set_N_flag(false);
 			set_H_flag(false);
@@ -739,10 +669,10 @@ void cpu_handle_opcode(void)
 		
 		case OPC_RRC2:
 		{
-			uint8_t operand = cpu_get_memory(cpu.hl.hl);
+			uint8_t operand = bus_get_memory(cpu.hl.hl);
 			bool bit0 = (0 != (operand & (1<<0)));
 			uint8_t result = (operand >> 1)| (bit0 ? 0x80 : 0);
-			cpu_set_memory(cpu.hl.hl, result);
+			bus_set_memory(cpu.hl.hl, result);
 			eval_Z_flag(result);
 			set_N_flag(false);
 			set_H_flag(false);
@@ -752,11 +682,11 @@ void cpu_handle_opcode(void)
 		
 		case OPC_RL2:
 		{
-			uint8_t operand = cpu_get_memory(cpu.hl.hl);
+			uint8_t operand = bus_get_memory(cpu.hl.hl);
 			bool bit7 = (0 != (operand & (1<<7)));
 			bool c = (0 != (cpu.af.f & FLAG_C));
 			uint8_t result = (operand << 1) | (c ? 0x1 : 0);
-			cpu_set_memory(cpu.hl.hl, result);
+			bus_set_memory(cpu.hl.hl, result);
 			eval_Z_flag(result);
 			set_N_flag(false);
 			set_H_flag(false);
@@ -766,11 +696,11 @@ void cpu_handle_opcode(void)
 		
 		case OPC_RR2:
 		{
-			uint8_t operand = cpu_get_memory(cpu.hl.hl);
+			uint8_t operand = bus_get_memory(cpu.hl.hl);
 			bool bit0 = (0 != (operand & (1<<0)));
 			bool c = (0 != (cpu.af.f & FLAG_C));
 			uint8_t result = (operand >> 1) | (c ? 0x80 : 0);
-			cpu_set_memory(cpu.hl.hl, result);
+			bus_set_memory(cpu.hl.hl, result);
 			eval_Z_flag(result);
 			set_N_flag(false);
 			set_H_flag(false);
@@ -780,10 +710,10 @@ void cpu_handle_opcode(void)
 		
 		case OPC_SLA2:
 		{
-			uint8_t operand = cpu_get_memory(cpu.hl.hl);
+			uint8_t operand = bus_get_memory(cpu.hl.hl);
 			bool bit7 = (0 != (operand & (1<<7)));
 			uint8_t result = (operand << 1);
-			cpu_set_memory(cpu.hl.hl, result);
+			bus_set_memory(cpu.hl.hl, result);
 			eval_Z_flag(result);
 			set_N_flag(false);
 			set_H_flag(false);
@@ -793,11 +723,11 @@ void cpu_handle_opcode(void)
 		
 		case OPC_SRA2:
 		{
-			uint8_t operand = cpu_get_memory(cpu.hl.hl);
+			uint8_t operand = bus_get_memory(cpu.hl.hl);
 			bool bit0 = (0 != (operand & (1<<0)));
 			bool bit7 = (0 != (operand & (1<<7)));
 			uint8_t result = (operand >> 1) | (bit7 ? 0x80 : 0);
-			cpu_set_memory(cpu.hl.hl, result);
+			bus_set_memory(cpu.hl.hl, result);
 			eval_Z_flag(result);
 			set_N_flag(false);
 			set_H_flag(false);
@@ -807,9 +737,9 @@ void cpu_handle_opcode(void)
 		
 		case OPC_SWAP2:
 		{
-			uint8_t operand = cpu_get_memory(cpu.hl.hl);
+			uint8_t operand = bus_get_memory(cpu.hl.hl);
 			uint8_t result = (LOW_NIBBLE(operand) << 4) | HIGH_NIBBLE(operand);
-			cpu_set_memory(cpu.hl.hl, result);
+			bus_set_memory(cpu.hl.hl, result);
 			eval_Z_flag(result);
 			set_N_flag(false);
 			set_H_flag(false);
@@ -819,10 +749,10 @@ void cpu_handle_opcode(void)
 		
 		case OPC_SRL2:
 		{
-			uint8_t operand = cpu_get_memory(cpu.hl.hl);
+			uint8_t operand = bus_get_memory(cpu.hl.hl);
 			bool bit0 = (0 != (operand & (1<<0)));
 			uint8_t result = (operand >> 1);
-			cpu_set_memory(cpu.hl.hl, result);
+			bus_set_memory(cpu.hl.hl, result);
 			eval_Z_flag(result);
 			set_N_flag(false);
 			set_H_flag(false);
@@ -832,7 +762,7 @@ void cpu_handle_opcode(void)
 		
 		case OPC_BIT2:
 		{
-			uint8_t operand = cpu_get_memory(cpu.hl.hl);
+			uint8_t operand = bus_get_memory(cpu.hl.hl);
 			uint8_t bit = (opcode2 & 0x38) >> 3;
 			eval_Z_flag((operand & (1 << bit)));
 			set_N_flag(false);
@@ -842,20 +772,20 @@ void cpu_handle_opcode(void)
 		
 		case OPC_RES2:
 		{
-			uint8_t operand = cpu_get_memory(cpu.hl.hl);
+			uint8_t operand = bus_get_memory(cpu.hl.hl);
 			uint8_t bit = (opcode2 & 0x38) >> 3;
 			uint8_t result = (operand & ~(1 << bit));
-			cpu_set_memory(cpu.hl.hl, result);
+			bus_set_memory(cpu.hl.hl, result);
 			// no flags affected
 		}
 		break;
 		
 		case OPC_SET2:
 		{
-			uint8_t operand = cpu_get_memory(cpu.hl.hl);
+			uint8_t operand = bus_get_memory(cpu.hl.hl);
 			uint8_t bit = (opcode2 & 0x38) >> 3;
 			uint8_t result = (operand | (1 << bit));
-			cpu_set_memory(cpu.hl.hl, result);
+			bus_set_memory(cpu.hl.hl, result);
 			// no flags affected
 		}
 		break;
@@ -880,10 +810,10 @@ void cpu_handle_opcode(void)
 		{
 			uint8_t hi, lo;
 			uint16_t next_pc = cpu.pc + 3;
-			lo = cpu_get_memory(cpu.pc + 1);
-			hi = cpu_get_memory(cpu.pc + 2);
-			cpu_set_memory(--cpu.sp, HIGH_BYTE(next_pc));
-			cpu_set_memory(--cpu.sp, LOW_BYTE(next_pc));
+			lo = bus_get_memory(cpu.pc + 1);
+			hi = bus_get_memory(cpu.pc + 2);
+			bus_set_memory(--cpu.sp, HIGH_BYTE(next_pc));
+			bus_set_memory(--cpu.sp, LOW_BYTE(next_pc));
 			cpu.pc = ((uint16_t)hi << 8) | lo;
 			cpu.next_instruction += 24;
 		}
@@ -899,10 +829,10 @@ void cpu_handle_opcode(void)
 	{
 		uint8_t hi, lo;
 		uint16_t next_pc = cpu.pc + 3;
-		lo = cpu_get_memory(cpu.pc + 1);
-		hi = cpu_get_memory(cpu.pc + 2);
-		cpu_set_memory(--cpu.sp, HIGH_BYTE(next_pc));
-		cpu_set_memory(--cpu.sp, LOW_BYTE(next_pc));
+		lo = bus_get_memory(cpu.pc + 1);
+		hi = bus_get_memory(cpu.pc + 2);
+		bus_set_memory(--cpu.sp, HIGH_BYTE(next_pc));
+		bus_set_memory(--cpu.sp, LOW_BYTE(next_pc));
 		cpu.pc = ((uint16_t)hi << 8) | lo;
 		cpu.next_instruction += 24;
 	}
@@ -919,7 +849,7 @@ void cpu_handle_opcode(void)
 
 		if (jump_taken)
 		{
-			int8_t offset = (int8_t) cpu_get_memory(cpu.pc + 1);
+			int8_t offset = (int8_t) bus_get_memory(cpu.pc + 1);
 			cpu.pc += (offset + 2);
 			cpu.next_instruction += 12;
 		}
@@ -933,7 +863,7 @@ void cpu_handle_opcode(void)
 
 	case OPC_JR:
 	{
-		int8_t offset = (int8_t) cpu_get_memory(cpu.pc + 1);
+		int8_t offset = (int8_t) bus_get_memory(cpu.pc + 1);
 		cpu.pc += (offset + 2);
 		cpu.next_instruction += 12;
 	}
@@ -951,8 +881,8 @@ void cpu_handle_opcode(void)
 		if (jump_taken)
 		{
 			uint8_t hi, lo;
-			lo = cpu_get_memory(cpu.pc + 1);
-			hi = cpu_get_memory(cpu.pc + 2);
+			lo = bus_get_memory(cpu.pc + 1);
+			hi = bus_get_memory(cpu.pc + 2);
 			cpu.pc = ((uint16_t)hi << 8) | lo;
 			cpu.next_instruction += 16;
 		}
@@ -967,8 +897,8 @@ void cpu_handle_opcode(void)
 	case OPC_JP:
 	{
 		uint8_t hi, lo;
-		lo = cpu_get_memory(cpu.pc + 1);
-		hi = cpu_get_memory(cpu.pc + 2);
+		lo = bus_get_memory(cpu.pc + 1);
+		hi = bus_get_memory(cpu.pc + 2);
 		cpu.pc = ((uint16_t)hi << 8) | lo;
 		cpu.next_instruction += 16;
 	}
@@ -993,8 +923,8 @@ void cpu_handle_opcode(void)
 		if (return_taken)
 		{
 			uint8_t lo, hi;
-			lo = cpu_get_memory(cpu.sp++);
-			hi = cpu_get_memory(cpu.sp++);
+			lo = bus_get_memory(cpu.sp++);
+			hi = bus_get_memory(cpu.sp++);
 			cpu.pc = ((uint16_t)hi << 8) | lo;
 			cpu.next_instruction += 20;
 		}
@@ -1012,8 +942,8 @@ void cpu_handle_opcode(void)
 	case OPC_RET:
 	{
 		uint8_t lo, hi;
-		lo = cpu_get_memory(cpu.sp++);
-		hi = cpu_get_memory(cpu.sp++);
+		lo = bus_get_memory(cpu.sp++);
+		hi = bus_get_memory(cpu.sp++);
 		cpu.pc = ((uint16_t)hi << 8) | lo;
 		cpu.next_instruction += 16;
 	}
@@ -1025,8 +955,8 @@ void cpu_handle_opcode(void)
 		uint8_t t = (opcode & 0x38) >> 3;
 		uint8_t offset = offset_lut[t];
 
-		cpu_set_memory(--cpu.sp, (((cpu.pc + 1) & 0xFF00) >> 8));
-		cpu_set_memory(--cpu.sp, (((cpu.pc + 1) & 0x00FF) >> 0));
+		bus_set_memory(--cpu.sp, (((cpu.pc + 1) & 0xFF00) >> 8));
+		bus_set_memory(--cpu.sp, (((cpu.pc + 1) & 0x00FF) >> 0));
 
 		cpu.pc = offset;
 
@@ -1038,7 +968,7 @@ void cpu_handle_opcode(void)
 	{
 		uint8_t operand_lut[8] = {
 			cpu.bc.b, cpu.bc.c, cpu.de.d, cpu.de.e, 
-			cpu.hl.h, cpu.hl.l, cpu_get_memory(cpu.hl.hl), cpu.af.a,
+			cpu.hl.h, cpu.hl.l, bus_get_memory(cpu.hl.hl), cpu.af.a,
 		};
 		uint8_t i = (opcode & 0x07);
 		uint8_t operand = operand_lut[i];
@@ -1058,7 +988,7 @@ void cpu_handle_opcode(void)
 	{
 		uint8_t operand_lut[8] = {
 			cpu.bc.b, cpu.bc.c, cpu.de.d, cpu.de.e, 
-			cpu.hl.h, cpu.hl.l, cpu_get_memory(cpu.hl.hl), cpu.af.a, 
+			cpu.hl.h, cpu.hl.l, bus_get_memory(cpu.hl.hl), cpu.af.a, 
 		};
 		uint8_t i = (opcode & 0x07);
 		uint8_t operand = operand_lut[i];
@@ -1078,7 +1008,7 @@ void cpu_handle_opcode(void)
 	{
 		uint8_t operand_lut[8] = {
 			cpu.bc.b, cpu.bc.c, cpu.de.d, cpu.de.e, 
-			cpu.hl.h, cpu.hl.l, cpu_get_memory(cpu.hl.hl), cpu.af.a, 
+			cpu.hl.h, cpu.hl.l, bus_get_memory(cpu.hl.hl), cpu.af.a, 
 		};
 		uint8_t i = (opcode & 0x07);
 		uint8_t operand = operand_lut[i];
@@ -1097,7 +1027,7 @@ void cpu_handle_opcode(void)
 	{
 		uint8_t operand_lut[8] = {
 			cpu.bc.b, cpu.bc.c, cpu.de.d, cpu.de.e, 
-			cpu.hl.h, cpu.hl.l, cpu_get_memory(cpu.hl.hl), cpu.af.a, 
+			cpu.hl.h, cpu.hl.l, bus_get_memory(cpu.hl.hl), cpu.af.a, 
 		};
 		uint8_t i = (opcode & 0x07);
 		uint8_t operand = operand_lut[i];
@@ -1114,7 +1044,7 @@ void cpu_handle_opcode(void)
 
 	case OPC_ADD2:
 	{
-		uint8_t operand = cpu_get_memory(cpu.pc + 1);
+		uint8_t operand = bus_get_memory(cpu.pc + 1);
 		eval_C_flag(cpu.af.a, operand, false);
 		eval_H_flag(cpu.af.a, operand, false);
 		set_N_flag(false);
@@ -1127,7 +1057,7 @@ void cpu_handle_opcode(void)
 
 	case OPC_SUB2:
 	{
-		uint8_t operand = cpu_get_memory(cpu.pc + 1);
+		uint8_t operand = bus_get_memory(cpu.pc + 1);
 		eval_C_flag(cpu.af.a, operand, true);
 		eval_H_flag(cpu.af.a, operand, true);
 		set_N_flag(true);
@@ -1140,7 +1070,7 @@ void cpu_handle_opcode(void)
 
 	case OPC_AND2:
 	{
-		uint8_t operand = cpu_get_memory(cpu.pc + 1);
+		uint8_t operand = bus_get_memory(cpu.pc + 1);
 		set_C_flag(false);
 		set_H_flag(true);
 		set_N_flag(false);
@@ -1153,7 +1083,7 @@ void cpu_handle_opcode(void)
 
 	case OPC_OR2:
 	{
-		uint8_t operand = cpu_get_memory(cpu.pc + 1);
+		uint8_t operand = bus_get_memory(cpu.pc + 1);
 		set_C_flag(false);
 		set_H_flag(false);
 		set_N_flag(false);
@@ -1168,7 +1098,7 @@ void cpu_handle_opcode(void)
 	{
 		uint8_t operand_lut[8] = {
 			cpu.bc.b, cpu.bc.c, cpu.de.d, cpu.de.e, 
-			cpu.hl.h, cpu.hl.l, cpu_get_memory(cpu.hl.hl), cpu.af.a, 
+			cpu.hl.h, cpu.hl.l, bus_get_memory(cpu.hl.hl), cpu.af.a, 
 		};
 		uint8_t i = (opcode & 0x07);
 		uint8_t operand = operand_lut[i];
@@ -1189,7 +1119,7 @@ void cpu_handle_opcode(void)
 	{
 		uint8_t operand_lut[8] = {
 			cpu.bc.b, cpu.bc.c, cpu.de.d, cpu.de.e, 
-			cpu.hl.h, cpu.hl.l, cpu_get_memory(cpu.hl.hl), cpu.af.a, 
+			cpu.hl.h, cpu.hl.l, bus_get_memory(cpu.hl.hl), cpu.af.a, 
 		};
 		uint8_t i = (opcode & 0x07);
 		uint8_t operand = operand_lut[i];
@@ -1210,7 +1140,7 @@ void cpu_handle_opcode(void)
 	{
 		uint8_t operand_lut[8] = {
 			cpu.bc.b, cpu.bc.c, cpu.de.d, cpu.de.e, 
-			cpu.hl.h, cpu.hl.l, cpu_get_memory(cpu.hl.hl), cpu.af.a, 
+			cpu.hl.h, cpu.hl.l, bus_get_memory(cpu.hl.hl), cpu.af.a, 
 		};
 		uint8_t i = (opcode & 0x07);
 		uint8_t operand = operand_lut[i];
@@ -1229,7 +1159,7 @@ void cpu_handle_opcode(void)
 	{
 		uint8_t operand_lut[8] = {
 			cpu.bc.b, cpu.bc.c, cpu.de.d, cpu.de.e, 
-			cpu.hl.h, cpu.hl.l, cpu_get_memory(cpu.hl.hl), cpu.af.a, 
+			cpu.hl.h, cpu.hl.l, bus_get_memory(cpu.hl.hl), cpu.af.a, 
 		};
 		uint8_t i = (opcode & 0x07);
 		uint8_t operand = operand_lut[i];
@@ -1248,7 +1178,7 @@ void cpu_handle_opcode(void)
 
 	case OPC_ADC2:
 	{
-		uint8_t operand = cpu_get_memory(cpu.pc + 1);
+		uint8_t operand = bus_get_memory(cpu.pc + 1);
 		uint8_t c = (cpu.af.f & FLAG_C) ? 1: 0;
 		eval_C_flag_c(cpu.af.a, operand, false, c);
 		eval_H_flag_c(cpu.af.a, operand, false, c);
@@ -1262,7 +1192,7 @@ void cpu_handle_opcode(void)
 
 	case OPC_SBC2:
 	{
-		uint8_t operand = cpu_get_memory(cpu.pc + 1);
+		uint8_t operand = bus_get_memory(cpu.pc + 1);
 		uint8_t c = (cpu.af.f & FLAG_C) ? 1: 0;
 		eval_C_flag_c(cpu.af.a, operand, true, c);
 		eval_H_flag_c(cpu.af.a, operand, true, c);
@@ -1276,7 +1206,7 @@ void cpu_handle_opcode(void)
 
 	case OPC_XOR2:
 	{
-		uint8_t operand = cpu_get_memory(cpu.pc + 1);
+		uint8_t operand = bus_get_memory(cpu.pc + 1);
 		uint8_t c = (cpu.af.f & FLAG_C) ? 1: 0;
 		set_C_flag(false);
 		set_H_flag(false);
@@ -1290,7 +1220,7 @@ void cpu_handle_opcode(void)
 
 	case OPC_CP2:
 	{
-		uint8_t operand = cpu_get_memory(cpu.pc + 1);
+		uint8_t operand = bus_get_memory(cpu.pc + 1);
 		uint8_t c = (cpu.af.f & FLAG_C) ? 1: 0;
 		eval_C_flag(cpu.af.a, operand, true);
 		eval_H_flag(cpu.af.a, operand, true);
@@ -1305,7 +1235,7 @@ void cpu_handle_opcode(void)
 	{
 		uint8_t src_lut[8] = {
 			cpu.bc.b, cpu.bc.c, cpu.de.d, cpu.de.e,
-			cpu.hl.h, cpu.hl.l, cpu_get_memory(cpu.hl.hl), cpu.af.a
+			cpu.hl.h, cpu.hl.l, bus_get_memory(cpu.hl.hl), cpu.af.a
 		};
 		uint8_t *dst_lut[8] = {
 			&cpu.bc.b, &cpu.bc.c, &cpu.de.d, &cpu.de.e,
@@ -1330,7 +1260,7 @@ void cpu_handle_opcode(void)
 		};
 		uint8_t r1 = (opcode & 0x07) >> 0;
 		uint8_t src = src_lut[r1];
-		cpu_set_memory(cpu.hl.hl, src);
+		bus_set_memory(cpu.hl.hl, src);
 		cpu.next_instruction += 8;
 		cpu.pc += 1;
 	}
@@ -1338,7 +1268,7 @@ void cpu_handle_opcode(void)
 
 	case OPC_LDd8:
 	{
-		uint8_t data = cpu_get_memory(cpu.pc + 1);
+		uint8_t data = bus_get_memory(cpu.pc + 1);
 		uint8_t *dst_lut[8] = {
 			&cpu.bc.b, &cpu.bc.c, &cpu.de.d, &cpu.de.e,
 			&cpu.hl.h, &cpu.hl.l, NULL     , &cpu.af.a
@@ -1353,9 +1283,9 @@ void cpu_handle_opcode(void)
 
 	case OPC_LDd82:
 	{
-		uint8_t data = cpu_get_memory(cpu.pc + 1);
+		uint8_t data = bus_get_memory(cpu.pc + 1);
 		uint8_t r = (opcode & 0x38) >> 3;
-		cpu_set_memory(cpu.hl.hl, data);
+		bus_set_memory(cpu.hl.hl, data);
 		cpu.next_instruction += 8;
 		cpu.pc += 2;
 	}
@@ -1366,10 +1296,10 @@ void cpu_handle_opcode(void)
 		uint8_t mux = (opcode & 0x30) >> 4;
 		switch (mux)
 		{
-		case 0: cpu_set_memory(cpu.bc.bc, cpu.af.a); break;
-		case 1: cpu_set_memory(cpu.de.de, cpu.af.a); break;
-		case 2: cpu_set_memory(cpu.hl.hl++, cpu.af.a); break;
-		case 3: cpu_set_memory(cpu.hl.hl--, cpu.af.a); break;
+		case 0: bus_set_memory(cpu.bc.bc, cpu.af.a); break;
+		case 1: bus_set_memory(cpu.de.de, cpu.af.a); break;
+		case 2: bus_set_memory(cpu.hl.hl++, cpu.af.a); break;
+		case 3: bus_set_memory(cpu.hl.hl--, cpu.af.a); break;
 		default: DBG_ERROR(); break;
 		}
 		cpu.next_instruction += 8;
@@ -1383,10 +1313,10 @@ void cpu_handle_opcode(void)
 		uint8_t mux = (opcode & 0x30) >> 4;
 		switch (mux)
 		{
-		case 0: src = cpu_get_memory(cpu.bc.bc); break;
-		case 1: src = cpu_get_memory(cpu.de.de); break;
-		case 2: src = cpu_get_memory(cpu.hl.hl++); break;
-		case 3: src = cpu_get_memory(cpu.hl.hl--); break;
+		case 0: src = bus_get_memory(cpu.bc.bc); break;
+		case 1: src = bus_get_memory(cpu.de.de); break;
+		case 2: src = bus_get_memory(cpu.hl.hl++); break;
+		case 3: src = bus_get_memory(cpu.hl.hl--); break;
 		default: DBG_ERROR(); break;
 		}
 		cpu.af.a = src;
@@ -1400,8 +1330,8 @@ void cpu_handle_opcode(void)
 		uint8_t hi, lo;
 		uint16_t d16;
 		uint8_t mux = (opcode & 0x30) >> 4;
-		lo = cpu_get_memory(cpu.pc + 1);
-		hi = cpu_get_memory(cpu.pc + 2);
+		lo = bus_get_memory(cpu.pc + 1);
+		hi = bus_get_memory(cpu.pc + 2);
 		d16 = ((uint16_t)(hi << 8)) | lo;
 		switch (mux)
 		{
@@ -1420,11 +1350,11 @@ void cpu_handle_opcode(void)
 	{
 		uint8_t hi, lo;
 		uint16_t addr;
-		lo = cpu_get_memory(cpu.pc + 1);
-		hi = cpu_get_memory(cpu.pc + 2);
+		lo = bus_get_memory(cpu.pc + 1);
+		hi = bus_get_memory(cpu.pc + 2);
 		addr = ((uint16_t)(hi << 8)) | lo;
-		cpu_set_memory(addr + 0, LOW_BYTE(cpu.sp));
-		cpu_set_memory(addr + 1, HIGH_BYTE(cpu.sp));
+		bus_set_memory(addr + 0, LOW_BYTE(cpu.sp));
+		bus_set_memory(addr + 1, HIGH_BYTE(cpu.sp));
 		cpu.next_instruction += 20;
 		cpu.pc += 3;
 	}
@@ -1432,9 +1362,9 @@ void cpu_handle_opcode(void)
 
 	case OPC_LDHa8:
 	{
-		uint8_t a8 = cpu_get_memory(cpu.pc + 1);
+		uint8_t a8 = bus_get_memory(cpu.pc + 1);
 		uint16_t addr = 0xff00 + a8;
-		cpu_set_memory(addr, cpu.af.a);
+		bus_set_memory(addr, cpu.af.a);
 		cpu.next_instruction += 12;
 		cpu.pc += 2;
 	}
@@ -1442,9 +1372,9 @@ void cpu_handle_opcode(void)
 
 	case OPC_LDHA:
 	{
-		uint8_t a8 = cpu_get_memory(cpu.pc + 1);
+		uint8_t a8 = bus_get_memory(cpu.pc + 1);
 		uint16_t addr = 0xff00 + a8;
-		cpu.af.a = cpu_get_memory(addr);
+		cpu.af.a = bus_get_memory(addr);
 		cpu.next_instruction += 12;
 		cpu.pc += 2;
 	}
@@ -1453,7 +1383,7 @@ void cpu_handle_opcode(void)
 	case OPC_LDCA:
 	{
 		uint16_t addr = 0xff00 + cpu.bc.c;
-		cpu_set_memory(addr, cpu.af.a);
+		bus_set_memory(addr, cpu.af.a);
 		cpu.next_instruction += 8;
 		cpu.pc += 1;
 	}
@@ -1462,7 +1392,7 @@ void cpu_handle_opcode(void)
 	case OPC_LDAC:
 	{
 		uint16_t addr = 0xff00 + cpu.bc.c;
-		cpu.af.a = cpu_get_memory(addr);
+		cpu.af.a = bus_get_memory(addr);
 		cpu.next_instruction += 8;
 		cpu.pc += 1;
 	}
@@ -1473,8 +1403,8 @@ void cpu_handle_opcode(void)
 		uint8_t r = (opcode & 0x30) >> 4;
 		uint16_t src_lut[4] = { cpu.bc.bc, cpu.de.de, cpu.hl.hl, cpu.af.af };
 		uint16_t src = src_lut[r];
-		cpu_set_memory(--cpu.sp, HIGH_BYTE(src));
-		cpu_set_memory(--cpu.sp, LOW_BYTE(src));
+		bus_set_memory(--cpu.sp, HIGH_BYTE(src));
+		bus_set_memory(--cpu.sp, LOW_BYTE(src));
 		cpu.next_instruction += 16;
 		cpu.pc += 1;
 	}
@@ -1486,8 +1416,8 @@ void cpu_handle_opcode(void)
 		uint8_t r = (opcode & 0x30) >> 4;
 		uint16_t *dst_lut[4] = { &cpu.bc.bc, &cpu.de.de, &cpu.hl.hl, &cpu.af.af };
 		uint16_t *dst = dst_lut[r];
-		lo = cpu_get_memory(cpu.sp++) & ((dst == &cpu.af.af) ? 0xf0 : 0xff);
-		hi = cpu_get_memory(cpu.sp++);
+		lo = bus_get_memory(cpu.sp++) & ((dst == &cpu.af.af) ? 0xf0 : 0xff);
+		hi = bus_get_memory(cpu.sp++);
 		*dst = ((uint16_t)(hi << 8)) | lo;
 		cpu.next_instruction += 12;
 		cpu.pc += 1;
@@ -1537,10 +1467,10 @@ void cpu_handle_opcode(void)
 
 	case OPC_INC3:
 	{
-		uint8_t val = cpu_get_memory(cpu.hl.hl);
+		uint8_t val = bus_get_memory(cpu.hl.hl);
 		eval_H_flag(val, 1, false);
 		set_N_flag(false);
-		cpu_set_memory(cpu.hl.hl, val + 1);
+		bus_set_memory(cpu.hl.hl, val + 1);
 		eval_Z_flag(val + 1);
 		cpu.next_instruction += 12;
 		cpu.pc += 1;
@@ -1606,10 +1536,10 @@ void cpu_handle_opcode(void)
 
 	case OPC_DEC3:
 	{
-		uint8_t val = cpu_get_memory(cpu.hl.hl);
+		uint8_t val = bus_get_memory(cpu.hl.hl);
 		eval_H_flag(val, 1, true);
 		set_N_flag(true);
-		cpu_set_memory(cpu.hl.hl, val - 1);
+		bus_set_memory(cpu.hl.hl, val - 1);
 		eval_Z_flag(val - 1);
 		cpu.next_instruction += 12;
 		cpu.pc += 1;
@@ -1648,7 +1578,7 @@ void cpu_handle_opcode(void)
 
 	case OPC_ADDSP:
 	{
-		int8_t r8 = cpu_get_memory(cpu.pc + 1);
+		int8_t r8 = bus_get_memory(cpu.pc + 1);
 		set_Z_flag(false);
 		set_N_flag(false);
 		eval_H_flag(cpu.sp, r8, false);
@@ -1661,7 +1591,7 @@ void cpu_handle_opcode(void)
 
 	case OPC_LDHLS:
 	{
-		int8_t r8 = cpu_get_memory(cpu.pc + 1);
+		int8_t r8 = bus_get_memory(cpu.pc + 1);
 		set_Z_flag(false);
 		set_N_flag(false);
 		eval_H_flag(cpu.sp, r8, false);
@@ -1684,10 +1614,10 @@ void cpu_handle_opcode(void)
 	{
 		uint8_t hi, lo;
 		uint16_t a16;
-		lo = cpu_get_memory(cpu.pc + 1);
-		hi = cpu_get_memory(cpu.pc + 2);
+		lo = bus_get_memory(cpu.pc + 1);
+		hi = bus_get_memory(cpu.pc + 2);
 		a16 = ((uint16_t)(hi << 8)) | lo;
-		cpu_set_memory(a16, cpu.af.a);
+		bus_set_memory(a16, cpu.af.a);
 		cpu.next_instruction += 16;
 		cpu.pc += 3;
 	}
@@ -1697,10 +1627,10 @@ void cpu_handle_opcode(void)
 	{
 		uint8_t hi, lo;
 		uint16_t a16;
-		lo = cpu_get_memory(cpu.pc + 1);
-		hi = cpu_get_memory(cpu.pc + 2);
+		lo = bus_get_memory(cpu.pc + 1);
+		hi = bus_get_memory(cpu.pc + 2);
 		a16 = ((uint16_t)(hi << 8)) | lo;
-		cpu.af.a = cpu_get_memory(a16);
+		cpu.af.a = bus_get_memory(a16);
 		cpu.next_instruction += 16;
 		cpu.pc += 3;
 	}
@@ -1727,7 +1657,7 @@ void cpu_print_state(void)
 	h = cpu.hl.h;
 	l = cpu.hl.l;
 	printf("\n");
-	printf("PC: %04x (Next Opcode = %02x), SP: %04x\n", cpu.pc, cpu_get_memory(cpu.pc), cpu.sp);
+	printf("PC: %04x (Next Opcode = %02x), SP: %04x\n", cpu.pc, bus_get_memory(cpu.pc), cpu.sp);
 	printf("Z: %d, N: %d, H: %d, C: %d\n", zf, nf, hf, cf);
 	printf("A: %02x, B: %02x, C: %02x, D: %02x, E: %02x, H: %02x, L: %02x\n", a, b, c, d, e, h, l);
 	printf("BC: %04x, DE: %04x, HL: %04x\n", cpu.bc.bc, cpu.de.de, cpu.hl.hl);
@@ -1778,14 +1708,11 @@ int main(int argc, char *argv[])
 	if (2 == argc)
 	{
 		char *FileName  = argv[1];
-		FILE *gbFile = fopen(FileName, "rb");
-		if (NULL == gbFile)
+		if (!bus_init_memory(FileName))
 		{
 			printf("Error: Could not open file '%s'.\n", FileName);
 			return 1;
 		}
-		fread(cpu.rom, 1, 32*1024, gbFile);
-		fclose(gbFile);
 	}
 	else
 	{

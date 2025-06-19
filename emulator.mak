@@ -16,7 +16,9 @@ ifeq ($(MAKELEVEL),0)
 	useless := $(shell mkdir -p $(OUTDIR))
 endif
 
-SRC = cpu.c
+SRC = \
+		cpu.c \
+		bus.c
 
 OBJS = $(addprefix $(OUTDIR)/,$(SRC:.c=.o))
 
@@ -26,7 +28,8 @@ CFLAGS = \
 		-ffunction-sections \
 		-fdata-sections \
 		-g \
-		-O2
+		-O2 \
+		-m32
 
 LDFLAGS = \
 		-ffunction-sections \
