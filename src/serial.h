@@ -1,35 +1,27 @@
 
 /*---------------------------------------------------------------------*
  *                                                                     *
- *                         SM83 Memory Bus                             *
+ *                         GBC Serial Transfer                         *
  *                                                                     *
  *                                                                     *
  *       project: Gameboy Color Emulator                               *
- *   module name: bus.h                                                *
+ *   module name: serial.h                                             *
  *        author: tstr92                                               *
- *          date: 2024-04-21                                           *
+ *          date: 2025-04-21                                           *
  *                                                                     *
  *---------------------------------------------------------------------*/
 
-#ifndef _BUS_H_
-#define _BUS_H_
+#ifndef _SERIAL_H_
+#define _SERIAL_H_
 
 /*---------------------------------------------------------------------*
  *  additional includes                                                *
  *---------------------------------------------------------------------*/
 #include <stdint.h>
-#include <stdbool.h>
 
 /*---------------------------------------------------------------------*
  *  global definitions                                                 *
  *---------------------------------------------------------------------*/
-#define IRQ_FLAGS_ADDRESS 0xFF0F
-#define IRQ_VBLANK        (1<<0)
-#define IRQ_LCD           (1<<1)
-#define IRQ_TIMER         (1<<2)
-#define IRQ_SERIAL        (1<<3)
-#define IRQ_JOYPAD        (1<<4)
-#define BUS_SET_IRQ(_irq) bus_set_memory(IRQ_FLAGS_ADDRESS, bus_get_memory(IRQ_FLAGS_ADDRESS) | _irq)
 
 /*---------------------------------------------------------------------*
  *  type declarations                                                  *
@@ -38,10 +30,11 @@
 /*---------------------------------------------------------------------*
  *  function prototypes                                                *
  *---------------------------------------------------------------------*/
-void bus_tick(void);
-uint8_t bus_get_memory(uint16_t addr);
-void bus_set_memory(uint16_t addr, uint8_t val);
-bool bus_init_memory(const char *filename);
+/* internal: only call this for address 0xFF01 - 0xFF02 */
+uint8_t gbc_serial_get_memory(uint16_t addr);
+
+/* internal: only call this for address 0xFF01 - 0xFF02 */
+void gbc_serial_set_memory(uint16_t addr, uint8_t val);
 
 /*---------------------------------------------------------------------*
  *  global data                                                        *
@@ -55,4 +48,4 @@ bool bus_init_memory(const char *filename);
  *  eof                                                                *
  *---------------------------------------------------------------------*/
 
- #endif /* #ifndef _BUS_H_ */
+ #endif /* #ifndef _SERIAL_H_ */

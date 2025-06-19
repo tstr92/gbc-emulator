@@ -1,35 +1,27 @@
 
 /*---------------------------------------------------------------------*
  *                                                                     *
- *                         SM83 Memory Bus                             *
+ *                         GBC Timer                                   *
  *                                                                     *
  *                                                                     *
  *       project: Gameboy Color Emulator                               *
- *   module name: bus.h                                                *
+ *   module name: timer.h                                              *
  *        author: tstr92                                               *
- *          date: 2024-04-21                                           *
+ *          date: 2025-04-21                                           *
  *                                                                     *
  *---------------------------------------------------------------------*/
 
-#ifndef _BUS_H_
-#define _BUS_H_
+#ifndef _TIMER_H_
+#define _TIMER_H_
 
 /*---------------------------------------------------------------------*
  *  additional includes                                                *
  *---------------------------------------------------------------------*/
 #include <stdint.h>
-#include <stdbool.h>
 
 /*---------------------------------------------------------------------*
  *  global definitions                                                 *
  *---------------------------------------------------------------------*/
-#define IRQ_FLAGS_ADDRESS 0xFF0F
-#define IRQ_VBLANK        (1<<0)
-#define IRQ_LCD           (1<<1)
-#define IRQ_TIMER         (1<<2)
-#define IRQ_SERIAL        (1<<3)
-#define IRQ_JOYPAD        (1<<4)
-#define BUS_SET_IRQ(_irq) bus_set_memory(IRQ_FLAGS_ADDRESS, bus_get_memory(IRQ_FLAGS_ADDRESS) | _irq)
 
 /*---------------------------------------------------------------------*
  *  type declarations                                                  *
@@ -38,10 +30,17 @@
 /*---------------------------------------------------------------------*
  *  function prototypes                                                *
  *---------------------------------------------------------------------*/
-void bus_tick(void);
-uint8_t bus_get_memory(uint16_t addr);
-void bus_set_memory(uint16_t addr, uint8_t val);
-bool bus_init_memory(const char *filename);
+/* internal: call this with every clock tick */
+void gbc_timer_tick(void);
+
+/* internal: a stop-instruction resets DIVA */
+void gbc_timer_diva_reset(void);
+
+/* internal: only call this for address 0xFF04 - 0xFF07 */
+uint8_t gbc_timer_get_memory(uint16_t addr);
+
+/* internal: only call this for address 0xFF04 - 0xFF07 */
+void gbc_timer_set_memory(uint16_t addr, uint8_t val);
 
 /*---------------------------------------------------------------------*
  *  global data                                                        *
@@ -55,4 +54,4 @@ bool bus_init_memory(const char *filename);
  *  eof                                                                *
  *---------------------------------------------------------------------*/
 
- #endif /* #ifndef _BUS_H_ */
+ #endif /* #ifndef _TIMER_H_ */

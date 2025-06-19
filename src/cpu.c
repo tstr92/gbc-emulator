@@ -21,6 +21,7 @@
 
 #include "debug.h"
 #include "bus.h"
+#include "timer.h"
 
 /*---------------------------------------------------------------------*
  *  local definitions                                                  *
@@ -35,6 +36,21 @@
 #define HIGH_BYTE(_uint16) ((_uint16 & 0xff00) >> 8)
 #define LOW_BYTE(_uint16) ((_uint16 & 0x00ff) >> 0)
 #define IS_IN_RANGE(_val, _min, _max) ((_val >= _min) && (_val <= _max))
+
+#define INTERRUPT_ENABLE_ADDRESS 0xFFFF
+#define INTERRUPT_FLAGS_ADDRESS  0xFF0F
+
+#define INTERRUPT_VBLANK         (1<<0)
+#define INTERRUPT_LCD            (1<<1)
+#define INTERRUPT_TIMER          (1<<2)
+#define INTERRUPT_SERIAL         (1<<3)
+#define INTERRUPT_JOYPAD         (1<<4)
+
+#define ISR_VECTOR_VBLANK        0x0040
+#define ISR_VECTOR_LCD           0x0048
+#define ISR_VECTOR_TIMER         0x0050
+#define ISR_VECTOR_SERIAL        0x0058
+#define ISR_VECTOR_JOYPAD        0x0060
 
 /*---------------------------------------------------------------------*
  *  local data types                                                   *
@@ -194,11 +210,6 @@ static sm83_t cpu;
 void cpu_init(void)
 {
 	memset(&cpu, 0, sizeof(cpu));
-}
-
-void cpu_isr_handled(void)
-{
-	#warning what to do here?
 }
 
 void eval_Z_flag(uint8_t reg)
@@ -376,6 +387,7 @@ void cpu_handle_opcode(void)
 		cpu.stopped = true;
 		cpu.next_instruction += 4;
 		cpu.pc += 2;
+		gbc_timer_diva_reset();
 	}
 	break;
 	
@@ -937,7 +949,7 @@ void cpu_handle_opcode(void)
 	break;
 
 	case OPC_RETI:
-		cpu_isr_handled();
+		cpu.interrupts_enabled = true;
 		/* fall through */
 	case OPC_RET:
 	{
@@ -1663,13 +1675,98 @@ void cpu_print_state(void)
 	printf("BC: %04x, DE: %04x, HL: %04x\n", cpu.bc.bc, cpu.de.de, cpu.hl.hl);
 }
 
-void cpu_tick(void)
+bool cpu_handle_interrupt(void)
 {
-	// currently ignoring cpu.next_instruction, which can be used for cycle-accuracy
-	cpu_handle_opcode();
-	cpu.cycle_cnt++;
+	static enum
+	{
+		isr_state_idle_e,
+		isr_state_setup_pc_e,
+	} isr_state = isr_state_idle_e;
+	static uint8_t isr = 0;
+	bool isrInPreparation = false;
+
+	switch (isr_state)
+	{
+		case isr_state_setup_pc_e:
+		{
+			uint8_t IF = bus_get_memory(INTERRUPT_FLAGS_ADDRESS);
+
+			/* push current pc to stack */
+			bus_set_memory(--cpu.sp, HIGH_BYTE(cpu.pc));
+			bus_set_memory(--cpu.sp, LOW_BYTE(cpu.pc));
+
+			/* setup pc for interrupt and clear respective interrupt flag */
+			if (isr & INTERRUPT_VBLANK)
+			{
+				cpu.pc = ISR_VECTOR_VBLANK;
+				bus_set_memory(INTERRUPT_FLAGS_ADDRESS, (IF & ~INTERRUPT_VBLANK));
+			}
+			else if (isr & INTERRUPT_LCD)
+			{
+				cpu.pc = ISR_VECTOR_LCD;
+				bus_set_memory(INTERRUPT_FLAGS_ADDRESS, (IF & ~INTERRUPT_LCD));
+			}
+			else if (isr & INTERRUPT_TIMER)
+			{
+				cpu.pc = ISR_VECTOR_TIMER;
+				bus_set_memory(INTERRUPT_FLAGS_ADDRESS, (IF & ~INTERRUPT_TIMER));
+			}
+			else if (isr & INTERRUPT_SERIAL)
+			{
+				cpu.pc = ISR_VECTOR_SERIAL;
+				bus_set_memory(INTERRUPT_FLAGS_ADDRESS, (IF & ~INTERRUPT_SERIAL));
+			}
+			else /*if (isr & INTERRUPT_JOYPAD)*/
+			{
+				cpu.pc = ISR_VECTOR_JOYPAD;
+				bus_set_memory(INTERRUPT_FLAGS_ADDRESS, (IF & ~INTERRUPT_JOYPAD));
+			}
+
+			/* disable all interrupts */
+			cpu.interrupts_enabled = false;
+			
+			cpu.next_instruction += 3;
+
+			isr_state = isr_state_idle_e;
+			isrInPreparation = true;
+		}
+		break;
+
+		case isr_state_idle_e:
+		default:
+		{
+			uint8_t IE = bus_get_memory(INTERRUPT_ENABLE_ADDRESS);
+			uint8_t IF = bus_get_memory(INTERRUPT_FLAGS_ADDRESS);
+			isr = (IE & IF);
+			if ((cpu.interrupts_enabled) && (0 != isr))
+			{
+				isr_state = isr_state_setup_pc_e;
+				cpu.next_instruction += 2;
+				isrInPreparation = true;
+			}
+		}
+		break;
+	}
+
+	return isrInPreparation;
+}
+
+void gbc_cpu_tick(void)
+{
+	if (cpu.next_instruction == cpu.cycle_cnt++)
+	{
+		if (!cpu_handle_interrupt())
+		{
+			cpu_handle_opcode();
+		}
+	}
 
 	return;
+}
+
+bool gbc_cpu_stopped(void)
+{
+	return cpu.stopped;
 }
 
 #if (0 < BUILD_TEST_DLL)
@@ -1702,34 +1799,6 @@ void cpu_get_state(uint8_t *a, uint8_t *f, uint8_t *b, uint8_t *c, uint8_t *d, u
 	*sp = cpu.sp;
 }
 #endif
-
-int main(int argc, char *argv[])
-{
-	if (2 == argc)
-	{
-		char *FileName  = argv[1];
-		if (!bus_init_memory(FileName))
-		{
-			printf("Error: Could not open file '%s'.\n", FileName);
-			return 1;
-		}
-	}
-	else
-	{
-		printf("Error: Expecting FileName as argument.\nInvocation:\n\t'%s <file>'.\n", argv[0]);
-		return 1;
-	}
-	
-	for (;;)
-	{
-		cpu_tick();
-		if (cpu.stopped)
-		{
-			printf("\nCPU Stopped!\n");
-			break;
-		}
-	}
-}
 
 /*---------------------------------------------------------------------*
  *  eof                                                                *

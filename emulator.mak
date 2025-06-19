@@ -2,7 +2,7 @@
 
 TARGET=emulator
 
-COMPILER = /c/MinGW/bin
+COMPILER = /c/msys64/mingw64/bin
 CC = $(COMPILER)/gcc
 OBJDUMP = $(COMPILER)/objdump
 BIN	= $(COMPILER)/objcopy
@@ -12,13 +12,15 @@ OUTDIR = .release
 DEBUG?=0
 
 ifeq ($(MAKELEVEL),0)
-	useless := $(shell echo -e "Make Emulator")
-	useless := $(shell mkdir -p $(OUTDIR))
+	dummy := $(shell echo -e "Make Emulator")
+	dummy := $(shell mkdir -p $(OUTDIR))
 endif
 
 SRC = \
 		cpu.c \
-		bus.c
+		bus.c \
+		joypad.c \
+		timer.c 
 
 OBJS = $(addprefix $(OUTDIR)/,$(SRC:.c=.o))
 
@@ -27,9 +29,8 @@ CFLAGS = \
 		-DUSE_0xE000_AS_PUTC_DEVICE=1 \
 		-ffunction-sections \
 		-fdata-sections \
-		-g \
-		-O2 \
-		-m32
+		-gdwarf-2 \
+		-O2
 
 LDFLAGS = \
 		-ffunction-sections \
@@ -47,21 +48,16 @@ $(OUTDIR)/%.o : %.c
 	@echo "compiling $< ..."
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# generate .elf file from objects
-$(OUTDIR)/$(TARGET).elf: $(OBJS)
+# generate .exe file from objects
+$(OUTDIR)/$(TARGET).exe: $(OBJS)
 	$(CC) $(LDFLAGS) $(OBJS) -o $@
 
-# generate .lss file from .elf file
-$(OUTDIR)/%.lss: $(OUTDIR)/%.elf
+# generate .lss file from .exe file
+$(OUTDIR)/%.lss: $(OUTDIR)/%.exe
 	@echo "generating $@ ..."
-	$(OBJDUMP) -D $< > $@
+	$(OBJDUMP) -D -h -l -S $< > $@
 
 # -h -l -S
-
-# generate .bin file from .elf file
-$(OUTDIR)/%.exe: $(OUTDIR)/%.elf
-	@echo "generating $@ ..."
-	$(BIN) -O binary $< $@
 
 dll:
 	$(CC) -m32 -static-libgcc -shared -DBUILD_TEST_DLL=1 -o $(OUTDIR)/$(TARGET).dll $(SRC)
