@@ -20,7 +20,8 @@ SRC = \
 		cpu.c \
 		bus.c \
 		joypad.c \
-		timer.c 
+		timer.c \
+		apu.c
 
 OBJS = $(addprefix $(OUTDIR)/,$(SRC:.c=.o))
 

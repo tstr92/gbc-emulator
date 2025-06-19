@@ -22,6 +22,7 @@
 #include "cpu.h"
 #include "joypad.h"
 #include "timer.h"
+#include "apu.h"
 
 
 /*---------------------------------------------------------------------*
@@ -93,6 +94,7 @@ uint8_t bus_get_memory(uint16_t addr)
 		break;
 
 		case 0xFF10 ... 0xFF3F:   // Audio + Audio Wave RAM
+			ret = gbc_apu_get_memory(addr);
 		break;
 
 		case 0xE000 ... 0xFDFF:   // reserved
@@ -140,6 +142,7 @@ switch (addr)
 
 	case 0xFF10 ... 0xFF26:   // Audio
 	case 0xFF30 ... 0xFF3F:   // Audio Wave RAM
+		gbc_apu_set_memory(addr, val);
 	break;
 
 #if (USE_0xE000_AS_PUTC_DEVICE)
@@ -208,6 +211,7 @@ void bus_tick(void)
 {
 	gbc_cpu_tick();
 	gbc_timer_tick();
+	gbc_apu_tick();
 }
 
 int main(int argc, char *argv[])
@@ -226,6 +230,8 @@ int main(int argc, char *argv[])
 		printf("Error: Expecting FileName as argument.\nInvocation:\n\t'%s <file>'.\n", argv[0]);
 		return 1;
 	}
+	
+	gbc_apu_init();
 
 	for (;;)
 	{
