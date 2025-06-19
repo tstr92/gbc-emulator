@@ -42,7 +42,7 @@ void isr_joypad(void) __interrupt(4) /*__using(1)*/
 
 void main(void)
 {
-    uint32_t test_cnt;
+    // uint32_t test_cnt;
 
     /* enabe all interrupts */
     __asm__("ei");
@@ -50,7 +50,7 @@ void main(void)
 
     xdev_out(putc);
 
-    xprintf("Hello World!\n\n");
+    // xprintf("Hello World!\n\n");
 
     // *((unsigned char*)0xFFFF) = 0xff;
     // *((unsigned char*)0xFF0F) = (1<<0);
@@ -59,19 +59,25 @@ void main(void)
     // *((unsigned char*)0xFF0F) = (1<<3);
     // *((unsigned char*)0xFF0F) = (1<<4);
 
-    int num_m_cycles[] = {256, 4, 16, 64};
-    for (int i = 0; i < 4; i++)
+    // int num_m_cycles[] = {256, 4, 16, 64};
+    // for (int i = 0; i < 4; i++)
+    // {
+    //     timer = 0;
+    //     test_cnt = 0;
+    //     xprintf("%d M-Cycles\n", num_m_cycles[i]);
+    //     TIMER_TAC = (1<<2) | i; // enable, 256 M-cycles
+    //     while (timer < 100)
+    //     {
+    //         test_cnt++;
+    //     }
+    //     TIMER_TAC = 0;
+    //     xprintf("test_cnt=%lu\n\n", test_cnt);
+    // }
+
+    timer = 0;
+    TIMER_TAC = (1<<2) | 0; // enable, 256 M-cycles
+    while (timer < 1000)
     {
-        timer = 0;
-        test_cnt = 0;
-        xprintf("%d M-Cycles\n", num_m_cycles[i]);
-        TIMER_TAC = (1<<2) | i; // enable, 256 M-cycles
-        while (timer < 100)
-        {
-            test_cnt++;
-        }
-        TIMER_TAC = 0;
-        xprintf("test_cnt=%lu\n\n", test_cnt);
     }
 
     __asm__("stop");
