@@ -25,7 +25,7 @@ all: compile bin
 
 compile:
 	@echo "compiling $< ..."
-	$(CC) $(CFLAGS) $(CFLAGS) $(SRC) -o $(OUTDIR)/$(TARGET).ihx
+	$(CC) $(CFLAGS) $(SRC) -o $(OUTDIR)/$(TARGET).ihx
 
 bin: compile $(OUTDIR)/gb.bin
 
