@@ -256,7 +256,7 @@ static int init_sdl_rsc(sdl_rsc_t *p_sdl_rsc)
         return 1;
     }
 
-    p_sdl_rsc->font = TTF_OpenFont("Flexi_IBM_VGA_False.ttf", FONTSIZE);
+    p_sdl_rsc->font = TTF_OpenFont("assets/Flexi_IBM_VGA_False.ttf", FONTSIZE);
     if (!p_sdl_rsc->font)
     {
         fprintf(stderr, "Failed to open font: %s\n", TTF_GetError());

@@ -19,6 +19,8 @@ OUTDIR = .release
 
 DEBUG?=0
 
+VPATH = src
+
 ifeq ($(MAKELEVEL),0)
 	dummy := $(shell echo -e "Make Emulator")
 	dummy := $(shell mkdir -p $(OUTDIR))

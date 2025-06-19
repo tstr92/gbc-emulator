@@ -22,6 +22,7 @@
 #include "emulator.h"
 #include "timer.h"
 #include "debug.h"
+#include "cpu.h"
 
 /*---------------------------------------------------------------------*
  *  local definitions                                                  *
