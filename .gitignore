@@ -1,6 +1,7 @@
 sm83-test-data-master
-documentation
+.doc
 .release
 .gb
 .vscode
+.roms
 gbc_emulator.code-workspace
