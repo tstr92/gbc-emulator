@@ -39,8 +39,10 @@ CFLAGS = \
 		-DUSE_0xE000_AS_PUTC_DEVICE=1 \
 		-ffunction-sections \
 		-fdata-sections \
-		-gdwarf-2 \
-		-O2
+		-g \
+		-O1
+
+#-flto
 
 LDFLAGS = \
 		-L$(SDL_LIB) \
@@ -48,6 +50,8 @@ LDFLAGS = \
 		-ffunction-sections \
 		-fdata-sections \
 		-Wl,-gc-sections
+
+#-flto
 
 .PHONY: clean all exe lss
 
@@ -62,6 +66,7 @@ $(OUTDIR)/%.o : %.c
 
 # generate .exe file from objects
 $(OUTDIR)/$(TARGET).exe: $(OBJS)
+	@echo "generating $@ ..."
 	$(CC) $(LDFLAGS) $(OBJS) -o $@
 	cp $(SDL_LIB)/SDL2.dll $(OUTDIR)/SDL2.dll
 
