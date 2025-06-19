@@ -16,9 +16,11 @@
  *  include files                                                      *
  *---------------------------------------------------------------------*/
 #include <stdbool.h>
+#include <string.h>
 
 #include "apu.h"
 #include "bus.h"
+#include "emulator.h"
 #include "timer.h"
 #include "debug.h"
 
@@ -46,6 +48,8 @@
 #define APU_ADDR_MASTER_VOL_VIN_PAN   0xFF24
 #define APU_ADDR_SOUND_PANNING        0xFF25
 #define APU_ADDR_AUDIO_MASTER_CONTROL 0xFF26
+#define APU_ADDR_PCM12                0xFF76   // Audio digital outputs 1 & 2
+#define APU_ADDR_PCM34                0xFF77   // Audio digital outputs 3 & 4
 
 #define AUDIO_MASTER_CONTROL_AUDIO_ON (1<<7)
 #define AUDIO_MASTER_CONTROL_CH1_ON   (1<<0)
@@ -104,6 +108,8 @@
 #define CH123_PERIOD_OVERFLOW          0x800
 #define CH12_LENGTH_TIMER_OVERFLOW     64
 
+#define MAX_NUM_SAMPLES 549
+
 typedef struct
 {
     uint8_t ch1_sweep;              // 0xFF10
@@ -131,6 +137,14 @@ typedef struct
 
     bool wave_ram_busy;
     uint8_t wave_ram_current_byte;
+
+    struct
+    {
+        uint8_t right[MAX_NUM_SAMPLES];
+        uint8_t left[MAX_NUM_SAMPLES];
+        uint32_t index;
+    } stereo_data;
+    
 } apu_t;
 
 typedef struct
@@ -138,6 +152,7 @@ typedef struct
     bool running;
     uint8_t id;
     bool wave_level_high;
+    uint8_t output;
     
     /* period, DC*/
     uint16_t duty_cycle;         // in 0.1%
@@ -169,6 +184,7 @@ typedef struct
 {
     bool running;
     bool dac_en;
+    uint8_t output;
     
     /* period*/
     uint16_t period;             // period from registers
@@ -199,6 +215,7 @@ typedef struct
 typedef struct
 {
     bool running;
+    uint8_t output;
 
     /* length timer */
     uint8_t  length_timer;             // counts up to 64 and turns off ch4
@@ -239,26 +256,26 @@ static ch4_t  ch4 = {0};
 /*---------------------------------------------------------------------*
  *  private function declarations                                      *
  *---------------------------------------------------------------------*/
-static uint8_t apu_ch12_tick(ch12_t *chx, bool div_apu_512Hz);
-static uint8_t apu_ch3_tick(bool div_apu_512Hz);
-static uint8_t apu_ch4_tick(bool div_apu_512Hz);
+static void apu_ch12_tick(ch12_t *chx, bool div_apu_512Hz);
+static void apu_ch3_tick(bool div_apu_512Hz);
+static void apu_ch4_tick(bool div_apu_512Hz);
 
 /*---------------------------------------------------------------------*
  *  private functions                                                  *
  *---------------------------------------------------------------------*/
-static uint8_t apu_ch12_tick(ch12_t *chx, bool div_apu_512Hz)
+static void apu_ch12_tick(ch12_t *chx, bool div_apu_512Hz)
 {
-    uint8_t ret;
-
-    ret = 0;
-
     if (chx->running)
     {
         apu.audio_master_control |= chx->id;
 
         if (chx->wave_level_high)
         {
-            ret = chx->volume;
+            chx->output = chx->volume & 0x0f;
+        }
+        else
+        {
+            chx->output = 0;
         }
 
         /* Period / Duty-Cycle: Generates Output */
@@ -367,23 +384,20 @@ static uint8_t apu_ch12_tick(ch12_t *chx, bool div_apu_512Hz)
     }
     else
     {
+        chx->output = 0;
         apu.audio_master_control &= ~chx->id;
     }
 
-    return (ret & 0x0f);
+    return;
 }
 
-static uint8_t apu_ch3_tick(bool div_apu_512Hz)
+static void apu_ch3_tick(bool div_apu_512Hz)
 {
-    uint8_t ret;
-
-    ret = 0;
-
     if (ch3.running)
     {
         apu.audio_master_control |= AUDIO_MASTER_CONTROL_CH3_ON;
 
-        ret = ch3.output_sample >> ch3.output_level_shift;
+        ch3.output = ch3.output_sample >> ch3.output_level_shift;
 
         /* Period: Select Output Sample */
         if (CH3_PERIOD_PRESCALER <= ++ch3.period_prescaler)
@@ -394,11 +408,11 @@ static uint8_t apu_ch3_tick(bool div_apu_512Hz)
                 ch3.period_counter = ch3.period;
                 if (0 == ch3.wave_ram_nibble_select)
                 {
-                    ch3.output_sample = apu.wave_ram[ch3.wave_ram_byte_select] >> 4;
+                    ch3.output_sample = (apu.wave_ram[ch3.wave_ram_byte_select] >> 4) & 0x0F;
                 }
                 else
                 {
-                    ch3.output_sample = apu.wave_ram[ch3.wave_ram_byte_select] >> 0;
+                    ch3.output_sample = (apu.wave_ram[ch3.wave_ram_byte_select] >> 0) & 0x0F;
                 }
                 ch3.wave_sample_select++;
             }
@@ -419,23 +433,20 @@ static uint8_t apu_ch3_tick(bool div_apu_512Hz)
     }
     else
     {
+        ch3.output = 0;
         apu.audio_master_control &= ~AUDIO_MASTER_CONTROL_CH3_ON;
     }
 
-    return ret & 0x0f;
+    return;
 }
 
-static uint8_t apu_ch4_tick(bool div_apu_512Hz)
+static void apu_ch4_tick(bool div_apu_512Hz)
 {
-    uint8_t ret;
-
-    ret = 0;
-
     if (ch4.running)
     {
         apu.audio_master_control |= AUDIO_MASTER_CONTROL_CH4_ON;
 
-        ret = (0 == (ch4.lfsr & 0x01)) ? ch4.volume : 0;
+        ch4.output = (0 == (ch4.lfsr & 0x01)) ? ch4.volume : 0;
 
         /* LFSR Frequency */
         if (ch4.lfsr_prescaler <= ++ch4.lfsr_counter)
@@ -504,11 +515,11 @@ static uint8_t apu_ch4_tick(bool div_apu_512Hz)
     }
     else
     {
+        ch4.output = 0;
         apu.audio_master_control &= ~AUDIO_MASTER_CONTROL_CH4_ON;
     }
 
-
-    return ret & 0x0f;
+    return;
 }
 
 /*---------------------------------------------------------------------*
@@ -531,38 +542,50 @@ void gbc_apu_init(void)
 void gbc_apu_tick(void)
 {
     static uint8_t last_div = 0;
+    static uint8_t sampling_timer = 0;
     uint8_t div;
     bool div_apu_512Hz;
-    uint8_t samples[4];
     uint8_t left, right;
+
 
     apu.wave_ram_busy = false;
     div = TIMER_GET_DIV();
     div_apu_512Hz = ((last_div & DIV_APU_BIT) && !(div & DIV_APU_BIT));
-    
-    samples[0] = apu_ch12_tick(&ch1, div_apu_512Hz);
-    samples[1] = apu_ch12_tick(&ch2, div_apu_512Hz);
-    samples[2] = apu_ch3_tick(div_apu_512Hz);
-    samples[3] = apu_ch4_tick(div_apu_512Hz);
-
-    left = 0;
-    right = 0;
-
-    right += (0 != (apu.sound_panning & PANNING_CH1_RIGHT)) ? samples[0] : 0;
-    right += (0 != (apu.sound_panning & PANNING_CH2_RIGHT)) ? samples[1] : 0;
-    right += (0 != (apu.sound_panning & PANNING_CH3_RIGHT)) ? samples[2] : 0;
-    right += (0 != (apu.sound_panning & PANNING_CH4_RIGHT)) ? samples[3] : 0;
-    left  += (0 != (apu.sound_panning &  PANNING_CH1_LEFT)) ? samples[0] : 0;
-    left  += (0 != (apu.sound_panning &  PANNING_CH2_LEFT)) ? samples[1] : 0;
-    left  += (0 != (apu.sound_panning &  PANNING_CH3_LEFT)) ? samples[2] : 0;
-    left  += (0 != (apu.sound_panning &  PANNING_CH4_LEFT)) ? samples[3] : 0;
-
     last_div = div;
+    
+    apu_ch12_tick(&ch1, div_apu_512Hz);
+    apu_ch12_tick(&ch2, div_apu_512Hz);
+    apu_ch3_tick(div_apu_512Hz);
+    apu_ch4_tick(div_apu_512Hz);
+
+    if (0 == ++sampling_timer)
+    {
+        left = 0;
+        right = 0;
+
+        right += (0 != (apu.sound_panning & PANNING_CH1_RIGHT)) ? ch1.output: 0;
+        right += (0 != (apu.sound_panning & PANNING_CH2_RIGHT)) ? ch2.output: 0;
+        right += (0 != (apu.sound_panning & PANNING_CH3_RIGHT)) ? ch3.output: 0;
+        right += (0 != (apu.sound_panning & PANNING_CH4_RIGHT)) ? ch4.output: 0;
+        left  += (0 != (apu.sound_panning &  PANNING_CH1_LEFT)) ? ch1.output: 0;
+        left  += (0 != (apu.sound_panning &  PANNING_CH2_LEFT)) ? ch2.output: 0;
+        left  += (0 != (apu.sound_panning &  PANNING_CH3_LEFT)) ? ch3.output: 0;
+        left  += (0 != (apu.sound_panning &  PANNING_CH4_LEFT)) ? ch4.output: 0;
+
+        apu.stereo_data.right[apu.stereo_data.index] = right;
+        apu.stereo_data.left[apu.stereo_data.index] = left;
+        if (MAX_NUM_SAMPLES <= ++apu.stereo_data.index)
+        {
+            emulator_wait_for_data_collection();
+            apu.stereo_data.index = 0;
+        }
+    }
+
 
     return;
 }
 
-/* internal: only call this for address 0xFF10 - 0xFF3F */
+/* internal: only call this for address 0xFF10 - 0xFF3F , 0xFF76-0xFF77 */
 uint8_t gbc_apu_get_memory(uint16_t addr)
 {
     uint8_t ret;
@@ -655,6 +678,18 @@ uint8_t gbc_apu_get_memory(uint16_t addr)
         }
         break;
 
+        case APU_ADDR_PCM12:
+        {
+            ret = ((ch1.output & 0x0f) << 0) | ((ch2.output & 0x0f) << 4);
+        }
+        break;
+
+        case APU_ADDR_PCM34:
+        {
+            ret = ((ch3.output & 0x0f) << 0) | ((ch4.output & 0x0f) << 4);
+        }
+        break;
+
         default:
         {
             DBG_ERROR();
@@ -665,7 +700,7 @@ uint8_t gbc_apu_get_memory(uint16_t addr)
     return ret;
 }
 
-/* internal: only call this for address 0xFF10 - 0xFF3F */
+/* internal: only call this for address 0xFF10 - 0xFF3F , 0xFF76-0xFF77 (RO) */
 void gbc_apu_set_memory(uint16_t addr, uint8_t val)
 {
     switch (addr)
@@ -972,6 +1007,7 @@ void gbc_apu_set_memory(uint16_t addr, uint8_t val)
 
         case APU_ADDR_MASTER_VOL_VIN_PAN:
         {
+            apu.master_vol_vin_pan = val;
             /* todo: not implemented */
         }
         break;
@@ -998,8 +1034,10 @@ void gbc_apu_set_memory(uint16_t addr, uint8_t val)
         case 0xFF16:
         case 0xFF1F:
         case 0xFF27 ... 0xFF2F:
+        case APU_ADDR_PCM12:
+        case APU_ADDR_PCM34:
         {
-            /* reserved -> nothing to do */
+            /* reserved / read-only -> nothing to do */
         }
         break;
 
@@ -1009,6 +1047,14 @@ void gbc_apu_set_memory(uint16_t addr, uint8_t val)
         }
         break;
     }
+}
+
+void emulator_get_audio_data(uint8_t *ch_r, uint8_t *ch_l, size_t *num_samples)
+{
+    memcpy(ch_r, apu.stereo_data.right, apu.stereo_data.index);
+    memcpy(ch_l, apu.stereo_data.left, apu.stereo_data.index);
+    *num_samples = apu.stereo_data.index;
+    apu.stereo_data.index = 0;
 }
 
 /*---------------------------------------------------------------------*

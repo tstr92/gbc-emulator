@@ -36,10 +36,10 @@ void gbc_apu_init(void);
 /* internal: call this with every clock tick */
 void gbc_apu_tick(void);
 
-/* internal: only call this for address 0xFF10 - 0xFF3F */
+/* internal: only call this for address 0xFF10 - 0xFF3F , 0xFF76-0xFF77 */
 uint8_t gbc_apu_get_memory(uint16_t addr);
 
-/* internal: only call this for address 0xFF10 - 0xFF3F */
+/* internal: only call this for address 0xFF10 - 0xFF3F , 0xFF76-0xFF77 (RO) */
 void gbc_apu_set_memory(uint16_t addr, uint8_t val);
 
 /*---------------------------------------------------------------------*

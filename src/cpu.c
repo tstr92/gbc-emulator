@@ -55,21 +55,6 @@
 /*---------------------------------------------------------------------*
  *  local data types                                                   *
  *---------------------------------------------------------------------*/
-/* Memory Address    Purpose
- * 0x0000 - 0x3FFF   Permanently mapped ROM Bank
- * 0x4000 - 0x7FFF   Area for switch ROM Bank
- * 0x8000 - 0x9FFF   Video RAM
- * 0xA000 - 0xBFFF   Area for switchable external RAM banks
- * 0xC000 - 0xCFFF   Game Boy’s working RAM bank 0
- * 0xD000 - 0xDFFF   Game Boy’s working RAM bank 1
- * 0xE000 - 0xFDFF   reserved
- * 0xFE00 - 0xFE9F   Sprite Attribute Table
- * 0xFEA0 - 0xFEFF   reserved
- * 0xFF00 - 0xFF7F   Devices Mappings. Used to access I/O devices
- * 0xFF80 - 0xFFFE   High RAM Area
- * 0xFFFF            Interrupt Enable Register
- */
-
 typedef struct
 {
 	union
@@ -1767,6 +1752,11 @@ void gbc_cpu_tick(void)
 bool gbc_cpu_stopped(void)
 {
 	return cpu.stopped;
+}
+
+uint64_t gbc_cpu_get_cycle_cnt(void)
+{
+	return cpu.cycle_cnt;
 }
 
 #if (0 < BUILD_TEST_DLL)

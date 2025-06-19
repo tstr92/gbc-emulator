@@ -22,14 +22,25 @@
 #include "cpu.h"
 #include "joypad.h"
 #include "timer.h"
+#include "serial.h"
 #include "apu.h"
-
+#include "ppu.h"
 
 /*---------------------------------------------------------------------*
  *  local definitions                                                  *
  *---------------------------------------------------------------------*/
+#define RP             0xFF56   // Infrared communications port
+#define SVBK           0xFF70   // WRAM bank
+#define SVBK_WRAM_BANK (0x07)   // select bank 1...7
+
 typedef struct
 {
+	uint8_t wram_banksel;
+	uint8_t wram[8][4096];
+	uint8_t hram[127];
+	uint8_t IF;
+	uint8_t IE;
+
 	uint8_t memory[64 * 1024];
 } bus_t;
 
@@ -70,13 +81,38 @@ uint8_t bus_get_memory(uint16_t addr)
 		case 0x4000 ... 0x7FFF:   // Area for switch ROM Bank
 		case 0x8000 ... 0x9FFF:   // Video RAM
 		case 0xA000 ... 0xBFFF:   // Area for switchable external RAM banks
-		case 0xC000 ... 0xCFFF:   // Game Boy’s working RAM bank 0
-		case 0xD000 ... 0xDFFF:   // Game Boy’s working RAM bank 1
 		case 0xFE00 ... 0xFE9F:   // Sprite Attribute Table
-		case 0xFF80 ... 0xFFFE:   // High RAM Area
-		case            0xFF0F:   // Interrupt Flags Register
-		case            0xFFFF:   // Interrupt Enable Register
 			ret = ((uint8_t *) &bus.memory[0])[addr];
+		break;
+
+		case 0xC000 ... 0xCFFF:   // Game Boy’s working RAM bank 0
+		{
+			ret = bus.wram[0][addr & 0xFFF];
+		}
+		break;
+
+		case 0xD000 ... 0xDFFF:   // Game Boy’s working RAM bank 1
+		{
+			ret = bus.wram[bus.wram_banksel][addr & 0xFFF];
+		}
+		break;
+
+		case 0xFF80 ... 0xFFFE:   // High RAM Area
+		{
+			ret = bus.hram[addr & 0x7F];
+		}
+		break;
+
+		case            0xFF0F:   // Interrupt Flags Register
+		{
+			ret = bus.IF;
+		}
+		break;
+	
+		case            0xFFFF:   // Interrupt Enable Register
+		{
+			ret = bus.IE;
+		}
 		break;
 
 		// 0xFF00 - 0xFF7F   Devices Mappings. Used to access I/O devices
@@ -86,7 +122,7 @@ uint8_t bus_get_memory(uint16_t addr)
 		break;
 
 		case 0xFF01 ... 0xFF02:   // Serial
-			debug_printf ("Memory access 'Serial' at 0x%04x.\n", addr);
+			ret = gbc_serial_get_memory(addr);
 		break;
 
 		case 0xFF04 ... 0xFF07:   // Timer
@@ -95,6 +131,16 @@ uint8_t bus_get_memory(uint16_t addr)
 
 		case 0xFF10 ... 0xFF3F:   // Audio + Audio Wave RAM
 			ret = gbc_apu_get_memory(addr);
+		break;
+
+		case RP:
+			debug_printf ("Memory access 'Infrared' at 0x%04x.\n", addr);
+		break;
+
+		case SVBK:
+		{
+			ret = bus.wram_banksel;
+		}
 		break;
 
 		case 0xE000 ... 0xFDFF:   // reserved
@@ -119,13 +165,26 @@ switch (addr)
 	case 0x4000 ... 0x7FFF:   // Area for switch ROM Bank
 	case 0x8000 ... 0x9FFF:   // Video RAM
 	case 0xA000 ... 0xBFFF:   // Area for switchable external RAM banks
-	case 0xC000 ... 0xCFFF:   // Game Boy’s working RAM bank 0
-	case 0xD000 ... 0xDFFF:   // Game Boy’s working RAM bank 1
 	case 0xFE00 ... 0xFE9F:   // Sprite Attribute Table
-	case 0xFF80 ... 0xFFFE:   // High RAM Area
-	case            0xFF0F:   // Interrupt Flags Register
-	case            0xFFFF:   // Interrupt Enable Register
 		((uint8_t *) &bus.memory[0])[addr] = val;
+	break;
+
+	case 0xC000 ... 0xCFFF:   // Game Boy’s working RAM bank 0
+	{
+		bus.wram[0][addr & 0xFFF] = val;
+	}
+	break;
+
+	case 0xD000 ... 0xDFFF:   // Game Boy’s working RAM bank 1
+	{
+		bus.wram[bus.wram_banksel][addr & 0xFFF] = val;
+	}
+	break;
+
+	case 0xFF80 ... 0xFFFE:   // High RAM Area
+	{
+		bus.hram[addr & 0x7F] = val;
+	}
 	break;
 
 	case            0xFF00:   // Joypad
@@ -133,7 +192,7 @@ switch (addr)
 	break;
 
 	case 0xFF01 ... 0xFF02:   // Serial
-		debug_printf ("Memory access 'Serial' at 0x%04x.\n", addr);
+		gbc_serial_set_memory(addr, val);
 	break;
 
 	case 0xFF04 ... 0xFF07:   // Timer
@@ -145,10 +204,45 @@ switch (addr)
 		gbc_apu_set_memory(addr, val);
 	break;
 
+	case RP:
+		debug_printf ("Memory access 'Infrared' at 0x%04x.\n", addr);
+	break;
+
+	case SVBK:
+	{
+		bus.wram_banksel = (0 == (val & SVBK_WRAM_BANK)) ? 1 : (val & SVBK_WRAM_BANK);
+	}
+	break;
+
+	case            0xFF0F:   // Interrupt Flags Register
+	{
+		bus.IF = val;
+	}
+	break;
+
+	case            0xFFFF:   // Interrupt Enable Register
+	{
+		bus.IE = val;
+	}
+	break;
+
 #if (USE_0xE000_AS_PUTC_DEVICE)
 	case            0xE000:   // UART
+	{
 		putc(val, stdout);
 		fflush(stdout);
+		// #define UART_BUFFER_SIZE 1024
+		// static char uart_buffer[UART_BUFFER_SIZE];
+		// static int uart_buffer_index = 0;
+		// uart_buffer[uart_buffer_index++] = val;
+		// if (('\n' == val) || (UART_BUFFER_SIZE <= uart_buffer_index))
+		// {
+		// 	uart_buffer_index = 0;
+		// 	printf(uart_buffer);
+		// 	fflush(stdout);
+		// }
+		// #undef UART_BUFFER_SIZE
+	}
 	break;
 	case 0xE001 ... 0xFDFF:   // reserved
 #else
@@ -207,41 +301,16 @@ bool bus_init_memory(const char *filename)
 	return ret;
 }
 
+void bus_init(void)
+{
+	bus.wram_banksel = 1;
+}
+
 void bus_tick(void)
 {
 	gbc_cpu_tick();
 	gbc_timer_tick();
 	gbc_apu_tick();
-}
-
-int main(int argc, char *argv[])
-{
-	if (2 == argc)
-	{
-		char *FileName  = argv[1];
-		if (!bus_init_memory(FileName))
-		{
-			printf("Error: Could not open file '%s'.\n", FileName);
-			return 1;
-		}
-	}
-	else
-	{
-		printf("Error: Expecting FileName as argument.\nInvocation:\n\t'%s <file>'.\n", argv[0]);
-		return 1;
-	}
-	
-	gbc_apu_init();
-
-	for (;;)
-	{
-		bus_tick();
-		if (gbc_cpu_stopped())
-		{
-			printf("\nCPU Stopped!\n");
-			break;
-		}
-	}
 }
 
 /*---------------------------------------------------------------------*
