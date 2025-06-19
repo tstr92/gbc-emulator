@@ -15,9 +15,11 @@ ifeq ($(MAKELEVEL),0)
 endif
 
 #SRC = gb.c
-# SRC =	isr_test.c \
-# 		xprintf.c
-SRC = beep.c
+SRC =	xprintf.c \
+		isr.c \
+		dma_test.c
+# isr_test.c
+# beep.c
 
 ASRC = vectors.asm
 

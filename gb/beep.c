@@ -89,7 +89,7 @@ void play_noise(void)
 {
     // --- Channel 4: Noise ---
     NR41 = 0x00;  // Sound length (not used unless length enable is set)
-    NR42 = 0x30;  // Initial volume: max (F), no envelope
+    NR42 = 0xf0;  // Initial volume: max (F), no envelope
     NR43 = 0x14;  // Clock shift=1, width mode=0 (15 bits), divisor=4
     NR44 = 0x80;  // Trigger + length enable (bit 6)
 }
