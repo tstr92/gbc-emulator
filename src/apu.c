@@ -1146,19 +1146,19 @@ int gbc_apu_set_internal_state(void)
     }
     if (0 == ret)
     {
-        ret = emulator_cb_read_from_save_file((uint8_t*) &ch1, sizeof(ch12_t   ));
+        ret = emulator_cb_read_from_save_file((uint8_t*) &ch1, sizeof(ch12_t));
     }
     if (0 == ret)
     {
-        ret = emulator_cb_read_from_save_file((uint8_t*) &ch2, sizeof(ch12_t   ));
+        ret = emulator_cb_read_from_save_file((uint8_t*) &ch2, sizeof(ch12_t));
     }
     if (0 == ret)
     {
-        ret = emulator_cb_read_from_save_file((uint8_t*) &ch3, sizeof(ch3_t    ));
+        ret = emulator_cb_read_from_save_file((uint8_t*) &ch3, sizeof(ch3_t));
     }
     if (0 == ret)
     {
-        ret = emulator_cb_read_from_save_file((uint8_t*) &ch4, sizeof(ch4_t    ));
+        ret = emulator_cb_read_from_save_file((uint8_t*) &ch4, sizeof(ch4_t));
     }
 
     return ret;
