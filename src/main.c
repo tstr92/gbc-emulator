@@ -586,11 +586,11 @@ uint8_t emulator_get_speed(void)
 
 void emulator_cb_write_to_save_file(uint8_t *data, size_t size, char *name)
 {
-    if ((gSaveFile) && (gSaveFileLog))
+    if (gSaveFile && gSaveFileLog)
     {
         char log_entry[128];
         long currentSaveFileSize = ftell(gSaveFile);
-        size_t log_entry_size = snprintf(log_entry, sizeof(log_entry), "%15s (%6lu) @ %6lu (%08lx)\n", name, size, currentSaveFileSize, currentSaveFileSize);
+        size_t log_entry_size = snprintf(log_entry, sizeof(log_entry), "%15s size = %6lu (%08lx) @ %6lu (%08lx)\n", name, size, size, currentSaveFileSize, currentSaveFileSize);
         fwrite(log_entry, 1, log_entry_size, gSaveFileLog);
         fwrite(data, 1, size, gSaveFile);
     }
