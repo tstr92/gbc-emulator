@@ -173,11 +173,18 @@ typedef struct
 
 typedef struct
 {
-    uint8_t color_id;     // a value between 0 and 3
-    uint8_t palette;      // on CGB a value between 0 and 7 and on DMG this only applies to objects
-    uint8_t sprite_prio;  // on CGB this is the OAM index for the object and on DMG this doesn’t exist
-    uint8_t bg_prio;      // holds the value of the OBJ-to-BG Priority bit
+    uint8_t color_id;       // a value between 0 and 3
+    uint8_t palette;        // on CGB a value between 0 and 7 and on DMG this only applies to objects
+    uint8_t sprite_prio;    // on CGB this is the OAM index for the object and on DMG this doesn’t exist
+    uint8_t bg_prio;        // holds the value of the OBJ-to-BG Priority bit
+    uint8_t oam_tile_index; // pixel priorization
 } pixel_t;
+
+typedef struct
+{
+    pixel_t pixels[8];
+    uint8_t fill_level;
+} pixel_buffer_t;
 
 #define FIFO_NUM_ENTRIES 16
 typedef struct
@@ -334,7 +341,6 @@ void ppu_pixel_fetcher_do(void)
                 /* found a matching sprite */
                 pixel_fetcher.bg_state = pfs_suspended_e;
                 pixel_fetcher.obj_state = pfs_get_tile_0_e;
-
             }
             else
             {
@@ -397,39 +403,75 @@ void ppu_pixel_fetcher_do(void)
         /* no break */
     case pfs_push_e:
     {
-        if (ppu_pixel_fifo_empty(&pixel_fetcher.obj_fifo))
+        pixel_buffer_t newPixels = {0};
+        pixel_buffer_t oldPixels = {0};
+        pixel_t pixel;
+
+        int numPixels = 8 - ((pixel_fetcher.x + 8) - ppu.scobj.sprites[ppu.scobj.rd].x_pos);
+        if (ppu.scobj.sprites[ppu.scobj.rd].x_flip)
         {
-            int numPixels = 8 - ((pixel_fetcher.x + 8) - ppu.scobj.sprites[ppu.scobj.rd].x_pos);
-            if (ppu.scobj.sprites[ppu.scobj.rd].x_flip)
+            for (int i = 0; i <= (numPixels - 1); i++)
             {
-                for (int i = 0; i <= (numPixels - 1); i++)
+                pixel = (pixel_t)
                 {
-                    pixel_t pixel = (pixel_t)
-                    {
-                        .color_id    = ((pixel_fetcher.obj_tile_data[0] & (1<<i)) ? 0x01 : 0x00) |
+                    .color_id       = ((pixel_fetcher.obj_tile_data[0] & (1<<i)) ? 0x01 : 0x00) |
                                        ((pixel_fetcher.obj_tile_data[1] & (1<<i)) ? 0x02 : 0x00) ,
-                        .sprite_prio = ppu.scobj.sprites[ppu.scobj.rd].priority,
-                    };
-                    ppu_pixel_fifo_push(&pixel_fetcher.obj_fifo, pixel);
+                    .sprite_prio    = ppu.scobj.sprites[ppu.scobj.rd].priority,
+                    .oam_tile_index = ppu.scobj.sprites[ppu.scobj.rd].tile_idx,
+                };
+                newPixels.pixels[newPixels.fill_level++] = pixel;
+            }
+        }
+        else
+        {
+            for (int i = (numPixels - 1); i >= 0; i--)
+            {
+                pixel = (pixel_t)
+                {
+                    .color_id    = ((pixel_fetcher.obj_tile_data[0] & (1<<i)) ? 0x01 : 0x00) |
+                                    ((pixel_fetcher.obj_tile_data[1] & (1<<i)) ? 0x02 : 0x00) ,
+                    .sprite_prio = ppu.scobj.sprites[ppu.scobj.rd].priority,
+                    .oam_tile_index = ppu.scobj.sprites[ppu.scobj.rd].tile_idx,
+                };
+                newPixels.pixels[newPixels.fill_level++] = pixel;
+            }
+        }
+
+        while (ppu_pixel_fifo_pop(&pixel_fetcher.obj_fifo, &pixel))
+        {
+            oldPixels.pixels[oldPixels.fill_level++] = pixel;
+        }
+
+        for (int i = 0; i < 8; i++)
+        {
+            if ((i < newPixels.fill_level) && (i < oldPixels.fill_level))
+            {
+                if (newPixels.pixels[i].oam_tile_index < oldPixels.pixels[i].oam_tile_index)
+                {
+                    ppu_pixel_fifo_push(&pixel_fetcher.obj_fifo, newPixels.pixels[i]);
                 }
+                else
+                {
+                    ppu_pixel_fifo_push(&pixel_fetcher.obj_fifo, oldPixels.pixels[i]);
+                }
+            }
+            else if (i < newPixels.fill_level)
+            {
+                ppu_pixel_fifo_push(&pixel_fetcher.obj_fifo, newPixels.pixels[i]);
+            }
+            else if (i < oldPixels.fill_level)
+            {
+                ppu_pixel_fifo_push(&pixel_fetcher.obj_fifo, oldPixels.pixels[i]);
             }
             else
             {
-                for (int i = (numPixels - 1); i >= 0; i--)
-                {
-                    pixel_t pixel = (pixel_t)
-                    {
-                        .color_id    = ((pixel_fetcher.obj_tile_data[0] & (1<<i)) ? 0x01 : 0x00) |
-                                       ((pixel_fetcher.obj_tile_data[1] & (1<<i)) ? 0x02 : 0x00) ,
-                        .sprite_prio = ppu.scobj.sprites[ppu.scobj.rd].priority,
-                    };
-                    ppu_pixel_fifo_push(&pixel_fetcher.obj_fifo, pixel);
-                }
+                break;
             }
-            ppu.scobj.rd++;
-            pixel_fetcher.obj_state = pfs_suspended_e;
-            pixel_fetcher.bg_state = pfs_get_tile_0_e;
         }
+
+        ppu.scobj.rd++;
+        pixel_fetcher.obj_state = pfs_suspended_e;
+        pixel_fetcher.bg_state = pfs_get_tile_0_e;
     }
     break;
 
