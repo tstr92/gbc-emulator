@@ -654,7 +654,7 @@ void gbc_ppu_tick(void)
                         if (ppu_pixel_fifo_pop(&pixel_fetcher.obj_fifo, &sprite_pixel))
                         {
                             if (!((0 == sprite_pixel.color_id) ||
-                                  (sprite_pixel.bg_prio && (0 != pixel.color_id))))
+                                  (sprite_pixel.sprite_prio && (0 != pixel.color_id))))
                             {
                                 pixel = sprite_pixel;
                                 pallette = sprite_pixel.palette ? ppu.obp1 : ppu.obp0;
