@@ -346,12 +346,27 @@ void renderTextLine(sdl_rsc_t *p_sdl_rsc, const char* text, SDL_Color color, int
 static void handle_menu(sdl_rsc_t *p_sdl_rsc, SDL_Event event)
 {
     char menu_txt[4][64];
+    static uint32_t last_save = -501;
+    uint32_t now = SDL_GetTicks();
+
+    #define TXT_SETTINGS "Settings"
+    #define TXT_SPEED    "Emulator Speed        %1.1f"
+    #define TXT_VOLUME   "Volume                %3u"
+    #define TXT_SAVE0    "Save Game"
+    #define TXT_SAVE1    "Save Game           done!"
 
     /* prepare menu text */
-    snprintf(&menu_txt[0][0], sizeof(menu_txt[0]), "Settings");
-    snprintf(&menu_txt[1][0], sizeof(menu_txt[1]), "Emulator Speed        %1.1f", ((float)gEmulatorSpeed / 10.0));
-    snprintf(&menu_txt[2][0], sizeof(menu_txt[1]), "Volume                %3u", gVolume);
-    snprintf(&menu_txt[3][0], sizeof(menu_txt[0]), "Save Game");
+    snprintf(&menu_txt[0][0], sizeof(menu_txt[0]), TXT_SETTINGS);
+    snprintf(&menu_txt[1][0], sizeof(menu_txt[1]), TXT_SPEED, ((float)gEmulatorSpeed / 10.0));
+    snprintf(&menu_txt[2][0], sizeof(menu_txt[1]), TXT_VOLUME, gVolume);
+    if ((uint32_t) (now - last_save) < 500)
+    {
+        snprintf(&menu_txt[3][0], sizeof(menu_txt[0]), TXT_SAVE1);
+    }
+    else
+    {
+        snprintf(&menu_txt[3][0], sizeof(menu_txt[0]), TXT_SAVE0);
+    }
     
 
     /* copy last screen */
@@ -408,7 +423,10 @@ static void handle_menu(sdl_rsc_t *p_sdl_rsc, SDL_Event event)
                     1900+t->tm_year, t->tm_mon, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
                 save_emulator_state(fileName);
 #else
-                save_emulator_state("savegame.bin");
+                if (0 == save_emulator_state("savegame.bin"))
+                {
+                    last_save = now;
+                }
 #endif
             }
         }
