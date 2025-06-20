@@ -96,6 +96,7 @@ static int gActiveMenuLine = 0;
 static uint8_t gEmulatorSpeed = 10; // 10 ... 20 = 100% ... 200%
 static int32_t gVolume = 50;
 FILE *gSaveFile = NULL;
+FILE *gSaveFileLog = NULL;
 long gSaveFileSize = 0;
 
 static key_t keys[8] =
@@ -122,6 +123,7 @@ static void   handle_menu         (sdl_rsc_t *p_sdl_rsc, SDL_Event event);
 static void   render              (sdl_rsc_t *p_sdl_rsc);
 static void   fps                 (sdl_rsc_t *p_sdl_rsc);
 static int    save_emulator_state (char *fname);
+static int    get_time_string     (char *str, size_t size);
 
 /*---------------------------------------------------------------------*
  *  private functions                                                  *
@@ -498,21 +500,42 @@ static int save_emulator_state(char *fname)
         return 1;
     }
 
+    char logFileName[64];
+    int offset = 0;
+    offset += snprintf       (&logFileName[offset], sizeof(logFileName) - offset, "save_");
+    offset += get_time_string(&logFileName[offset], sizeof(logFileName) - offset);
+    offset += snprintf       (&logFileName[offset], sizeof(logFileName) - offset, ".log");
+    gSaveFileLog = fopen(logFileName, "w");
+
     gSaveFile = fopen(fname, "wb");
 
-    if (NULL == gSaveFile)
+    if ((NULL == gSaveFile) || (NULL == gSaveFileLog))
     {
+        fclose(gSaveFile);
+        fclose(gSaveFileLog);
+        gSaveFile = NULL;
+        gSaveFileLog = NULL;
         return 1;
     }
 
     emulator_write_save_file();
 
     fclose(gSaveFile);
+    fclose(gSaveFileLog);
 
     gSaveFile = NULL;
+    gSaveFileLog = NULL;
     gSaveFileSize = 0;
 
     return 0;
+}
+
+static int get_time_string(char *str, size_t size)
+{
+    time_t now = time(NULL);
+    struct tm *t = localtime(&now);
+    return snprintf(str, size, "%4u-%02u-%02u_%02u-%02u-%02u",
+        1900+t->tm_year, t->tm_mon, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
 }
 
 /*---------------------------------------------------------------------*
@@ -561,10 +584,14 @@ uint8_t emulator_get_speed(void)
 }
 
 
-void emulator_cb_write_to_save_file(uint8_t *data, size_t size)
+void emulator_cb_write_to_save_file(uint8_t *data, size_t size, char *name)
 {
-    if (gSaveFile)
+    if ((gSaveFile) && (gSaveFileLog))
     {
+        char log_entry[128];
+        long currentSaveFileSize = ftell(gSaveFile);
+        size_t log_entry_size = snprintf(log_entry, sizeof(log_entry), "%15s (%6lu) @ %6lu (%08lx)\n", name, size, currentSaveFileSize, currentSaveFileSize);
+        fwrite(log_entry, 1, log_entry_size, gSaveFileLog);
         fwrite(data, 1, size, gSaveFile);
     }
 }

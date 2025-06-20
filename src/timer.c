@@ -174,7 +174,7 @@ void gbc_timer_set_memory(uint16_t addr, uint8_t val)
 
 void gbc_tim_write_internal_state(void)
 {
-	emulator_cb_write_to_save_file((uint8_t*) &timer, sizeof(timer_t));
+	emulator_cb_write_to_save_file((uint8_t*) &timer, sizeof(timer_t), "tim");
 	return;
 }
 

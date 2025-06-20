@@ -1018,10 +1018,10 @@ void emulator_get_video_data(uint32_t *data)
 
 void gbc_ppu_write_internal_state(void)
 {
-    emulator_cb_write_to_save_file((uint8_t*) &ppu          , sizeof(ppu          ));
-    emulator_cb_write_to_save_file((uint8_t*) &ppu_state    , sizeof(ppu_state    ));
-    emulator_cb_write_to_save_file((uint8_t*) &pixel_fetcher, sizeof(pixel_fetcher));
-    emulator_cb_write_to_save_file((uint8_t*) &vram         , sizeof(vram         ));
+    emulator_cb_write_to_save_file((uint8_t*) &ppu          , sizeof(ppu          ), "ppu"          );
+    emulator_cb_write_to_save_file((uint8_t*) &ppu_state    , sizeof(ppu_state    ), "ppu_state"    );
+    emulator_cb_write_to_save_file((uint8_t*) &pixel_fetcher, sizeof(pixel_fetcher), "pixel_fetcher");
+    emulator_cb_write_to_save_file((uint8_t*) &vram         , sizeof(vram         ), "vram"         );
     return;
 }
 

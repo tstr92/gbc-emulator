@@ -7,3 +7,4 @@ sm83-test-data-master
 gbc_emulator.code-workspace
 assets
 *.bin
+*.log

@@ -708,7 +708,7 @@ bool bus_init_memory(const char *filename)
 
 void gbc_bus_write_internal_state(void)
 {
-	emulator_cb_write_to_save_file((uint8_t*) &bus, sizeof(bus_t));
+	emulator_cb_write_to_save_file((uint8_t*) &bus, sizeof(bus_t), "bus");
 	return;
 }
 

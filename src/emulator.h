@@ -51,7 +51,7 @@ int emulator_load_save_file(void);
 
 /* 
  */
-void emulator_cb_write_to_save_file(uint8_t *data, size_t size);
+void emulator_cb_write_to_save_file(uint8_t *data, size_t size, char *name);
 int emulator_cb_read_from_save_file(uint8_t *data, size_t size);
 
 /* Callback-Function that reads the current Button-states.
