@@ -376,7 +376,14 @@ void ppu_pixel_fetcher_do(void)
     {
         uint8_t *p_window_tile_data = &(vram[ppu.vbk & 0x01].tile_data[0]);
         uint8_t data;
-        data = p_window_tile_data[pixel_fetcher.obj_tile_number * 16 + 2 * pixel_fetcher.tile_y_offset + pixel_fetcher.tile_hi_lo];
+        if (ppu.scobj.sprites[ppu.scobj.rd].y_flip)
+        {
+            data = p_window_tile_data[pixel_fetcher.obj_tile_number * 16 + (16 - 2 * pixel_fetcher.tile_y_offset) + pixel_fetcher.tile_hi_lo];
+        }
+        else
+        {
+            data = p_window_tile_data[pixel_fetcher.obj_tile_number * 16 + 2 * pixel_fetcher.tile_y_offset + pixel_fetcher.tile_hi_lo];
+        }
         pixel_fetcher.obj_tile_data[pixel_fetcher.tile_hi_lo] = data;
         pixel_fetcher.tile_hi_lo++;
 
@@ -418,7 +425,6 @@ void ppu_pixel_fetcher_do(void)
                     ppu_pixel_fifo_push(&pixel_fetcher.obj_fifo, pixel);
                 }
             }
-            if (ppu.scobj.sprites[ppu.scobj.rd].y_flip) printf("yf\n");
             ppu.scobj.rd++;
             pixel_fetcher.obj_state = pfs_suspended_e;
             pixel_fetcher.bg_state = pfs_get_tile_0_e;
