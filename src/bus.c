@@ -527,32 +527,32 @@ void bus_set_memory(uint16_t addr, uint8_t val)
 		case 0xFF55: // VRAM DMA Length/Mode/Start
 		{
 			printf("%04x\n", addr);
-			// if ((bus.vram_dma.active) && (HBlank_dma == bus.vram_dma.mode) && (!(val & 0x80)))
-			// {
-			// 	bus.vram_dma.active = false;
-			// }
-			// else if ((((0x0000 <= bus.vram_dma.src) && (0x7FF0 >= bus.vram_dma.src))  ||
-			//           ((0xA000 <= bus.vram_dma.src) && (0xDFF0 >= bus.vram_dma.src))) &&
-			//          ( (0x8000 <= bus.vram_dma.dst) && (0x9FF0 >= bus.vram_dma.dst)))
-			// {
-			// 	uint16_t num_blocks;
-			// 	num_blocks = ((val & VRAM_DMA_LEN_MSK) + 1);
-			// 	bus.vram_dma.active = true;
-			// 	bus.vram_dma.len = num_blocks * 16;
-			// 	if (val & VRAM_DMA_HBLANK_MSK)
-			// 	{
-			// 		bus.vram_dma.mode = HBlank_dma;
-			// 	}
-			// 	else
-			// 	{
-			// 		uint32_t num_stall_cycles;
-			// 		num_stall_cycles = (VRAM_DMA_CP_CYCLES * num_blocks) << ((bus.key1 & KEY1_DOUBLE_SPEED) ? 1 : 0);
-			// 		bus.vram_dma.mode = general_purpose_dma;
-			// 		bus_dma_cpy(bus.vram_dma.dst, bus.vram_dma.src, bus.vram_dma.len);
-			// 		gbc_cpu_stall(num_stall_cycles);
-			// 		printf("DMA Go! %d Bytes %04x -> %04X\n", bus.vram_dma.len, bus.vram_dma.src, bus.vram_dma.dst);
-			// 	}
-			// }
+			if ((bus.vram_dma.active) && (HBlank_dma == bus.vram_dma.mode) && (!(val & 0x80)))
+			{
+				bus.vram_dma.active = false;
+			}
+			else if ((((0x0000 <= bus.vram_dma.src) && (0x7FF0 >= bus.vram_dma.src))  ||
+			          ((0xA000 <= bus.vram_dma.src) && (0xDFF0 >= bus.vram_dma.src))) &&
+			         ( (0x8000 <= bus.vram_dma.dst) && (0x9FF0 >= bus.vram_dma.dst)))
+			{
+				uint16_t num_blocks;
+				num_blocks = ((val & VRAM_DMA_LEN_MSK) + 1);
+				bus.vram_dma.active = true;
+				bus.vram_dma.len = num_blocks * 16;
+				if (val & VRAM_DMA_HBLANK_MSK)
+				{
+					bus.vram_dma.mode = HBlank_dma;
+				}
+				else
+				{
+					uint32_t num_stall_cycles;
+					num_stall_cycles = (VRAM_DMA_CP_CYCLES * num_blocks) << ((bus.key1 & KEY1_DOUBLE_SPEED) ? 1 : 0);
+					bus.vram_dma.mode = general_purpose_dma;
+					bus_dma_cpy(bus.vram_dma.dst, bus.vram_dma.src, bus.vram_dma.len);
+					gbc_cpu_stall(num_stall_cycles);
+					printf("DMA Go! %d Bytes %04x -> %04X\n", bus.vram_dma.len, bus.vram_dma.src, bus.vram_dma.dst);
+				}
+			}
 		}
 		break;
 
@@ -783,7 +783,7 @@ void bus_HBlank_cb(void)
 		{
 			bus.vram_dma.active = false;
 		}
-		num_stall_cycles = VRAM_DMA_CP_CYCLES << ((bus.key1 & KEY1_DOUBLE_SPEED) ? 1 : 0);
+		num_stall_cycles = (bus.key1 & KEY1_DOUBLE_SPEED) ? (2 * VRAM_DMA_CP_CYCLES) : VRAM_DMA_CP_CYCLES;
 		gbc_cpu_stall(num_stall_cycles);
 	}
 }

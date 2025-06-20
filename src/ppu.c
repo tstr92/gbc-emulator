@@ -239,6 +239,17 @@ typedef union
     };
 } screen_pixel_t;
 
+
+typedef union
+{
+    uint8_t raw[0x2000];
+    struct
+    {
+        uint8_t tile_data[0x1800];
+        uint8_t tile_map[2][0x400];
+    };
+} vram_t;
+
 /*---------------------------------------------------------------------*
  *  external declarations                                              *
  *---------------------------------------------------------------------*/
@@ -253,10 +264,7 @@ typedef union
 static ppu_mem_t ppu;
 static ppu_state_t ppu_state;
 static pixel_fetcher_t pixel_fetcher;
-static uint8_t window_tile_map_0x9800[0x400];
-static uint8_t window_tile_map_0x9C00[0x400];
-static uint8_t window_tile_data_0[0x1800];
-static uint8_t window_tile_data_1[0x1800];
+static vram_t vram[2];
 
 static screen_pixel_t screen0[144][160];
 static screen_pixel_t screen1[144][160];
@@ -364,7 +372,7 @@ void ppu_pixel_fetcher_do(void)
     case pfs_get_tile_data_hi_0_e:
     case pfs_get_tile_data_lo_0_e:
     {
-        uint8_t *p_window_tile_data = window_tile_data_0;
+        uint8_t *p_window_tile_data = &(vram[ppu.vbk & 0x01].tile_data[0]);
         uint8_t data;
         data = p_window_tile_data[pixel_fetcher.obj_tile_number * 16 + 2 * pixel_fetcher.tile_y_offset + pixel_fetcher.tile_hi_lo];
         pixel_fetcher.obj_tile_data[pixel_fetcher.tile_hi_lo] = data;
@@ -440,13 +448,13 @@ void ppu_pixel_fetcher_do(void)
         bool inWindow;
         uint8_t tileX, tileY;
 
-        p_tile_map = window_tile_map_0x9800;
+        p_tile_map = &(vram[ppu.vbk & 0x01].tile_map[0][0]);
         inWindow = (ppu.ly >= ppu.wy) && (pixel_fetcher.x >= (ppu.wx - 7));
 
         if ((!inWindow && (ppu.lcdc & LCDC_BG_TILE_MAP)) ||
             ( inWindow && (ppu.lcdc & LCDC_WINDOW_TILE_MAP)))
         {
-            p_tile_map = window_tile_map_0x9C00;
+            p_tile_map = &(vram[ppu.vbk & 0x01].tile_map[1][0]);
         }
         
         if (inWindow && (ppu.lcdc & LCDC_WINDOW_EN))
@@ -472,7 +480,7 @@ void ppu_pixel_fetcher_do(void)
     case pfs_get_tile_data_hi_0_e:
     case pfs_get_tile_data_lo_0_e:
     {
-        uint8_t *p_window_tile_data = window_tile_data_0;
+        uint8_t *p_window_tile_data = &(vram[ppu.vbk & 0x01].tile_data[0]);
         uint8_t data;
         if (pixel_fetcher.bg_tile_number & 0x80)
         {
@@ -551,7 +559,9 @@ void gbc_ppu_tick(void)
 
     if (ppu.lcdc & LCDC_LCD_PPU_EN)
     {
-        window_tile_map = (ppu.lcdc & LCDC_WINDOW_TILE_MAP) ? window_tile_map_0x9C00 : window_tile_map_0x9800;
+        window_tile_map = (ppu.lcdc & LCDC_WINDOW_TILE_MAP)      ?
+                          &(vram[ppu.vbk & 0x01].tile_map[1][0]) :
+                          &(vram[ppu.vbk & 0x01].tile_map[0][0]) ;
     }
 
     switch (ppu_state.mode)
@@ -722,21 +732,9 @@ uint8_t gbc_ppu_get_memory(uint16_t addr)
 
     switch (addr)
     {
-        case 0x8000 ... 0x97FF:   // Video RAM: Tile Data
+        case 0x8000 ... 0x9FFF:   // Video RAM
         {
-            ret = window_tile_data_0[addr - 0x8000];
-        }
-        break;
-
-        case 0x9800 ... 0x9BFF:   // Video RAM: Tile Map 0
-        {
-            ret = window_tile_map_0x9800[addr - 0x9800];
-        }
-        break;
-
-        case 0x9C00 ... 0x9FFF:   // Video RAM: Tile Map 1
-        {
-            ret = window_tile_map_0x9C00[addr - 0x9C00];
+            ret = vram[ppu.vbk & 0x01].raw[addr & 0x1FFF];
         }
         break;
 
@@ -807,7 +805,7 @@ uint8_t gbc_ppu_get_memory(uint16_t addr)
 
         case VBK:
         {
-            ret = ppu.vbk;
+            ret = ppu.vbk | 0xFE;
         }
         break;
 
@@ -861,21 +859,9 @@ void gbc_ppu_set_memory(uint16_t addr, uint8_t val)
 {
     switch (addr)
     {
-        case 0x8000 ... 0x97FF:   // Video RAM: Tile Data
+        case 0x8000 ... 0x9FFF:   // Video RAM
         {
-            window_tile_data_0[addr - 0x8000] = val;
-        }
-        break;
-
-        case 0x9800 ... 0x9BFF:   // Video RAM: Tile Map 0
-        {
-            window_tile_map_0x9800[addr - 0x9800] = val;
-        }
-        break;
-
-        case 0x9C00 ... 0x9FFF:   // Video RAM: Tile Map 1
-        {
-            window_tile_map_0x9C00[addr - 0x9C00] = val;
+            vram[ppu.vbk & 0x01].raw[addr & 0x1FFF] = val;
         }
         break;
 
@@ -949,7 +935,7 @@ void gbc_ppu_set_memory(uint16_t addr, uint8_t val)
 
         case VBK:
         {
-            ppu.vbk = val;
+            ppu.vbk = val & 0x01;
         }
         break;
 
@@ -1013,13 +999,10 @@ void emulator_get_video_data(uint32_t *data)
 
 void gbc_ppu_write_internal_state(void)
 {
-    emulator_cb_write_to_save_file((uint8_t*) &ppu                   , sizeof(ppu                   ));
-    emulator_cb_write_to_save_file((uint8_t*) &ppu_state             , sizeof(ppu_state             ));
-    emulator_cb_write_to_save_file((uint8_t*) &pixel_fetcher         , sizeof(pixel_fetcher         ));
-    emulator_cb_write_to_save_file((uint8_t*) &window_tile_map_0x9800, sizeof(window_tile_map_0x9800));
-    emulator_cb_write_to_save_file((uint8_t*) &window_tile_map_0x9C00, sizeof(window_tile_map_0x9C00));
-    emulator_cb_write_to_save_file((uint8_t*) &window_tile_data_0    , sizeof(window_tile_data_0    ));
-    emulator_cb_write_to_save_file((uint8_t*) &window_tile_data_1    , sizeof(window_tile_data_1    ));
+    emulator_cb_write_to_save_file((uint8_t*) &ppu          , sizeof(ppu          ));
+    emulator_cb_write_to_save_file((uint8_t*) &ppu_state    , sizeof(ppu_state    ));
+    emulator_cb_write_to_save_file((uint8_t*) &pixel_fetcher, sizeof(pixel_fetcher));
+    emulator_cb_write_to_save_file((uint8_t*) &vram         , sizeof(vram         ));
     return;
 }
 
@@ -1029,31 +1012,19 @@ int gbc_ppu_set_internal_state(void)
 
     if (0 == ret)
     {
-        emulator_cb_read_from_save_file((uint8_t*) &ppu                   , sizeof(ppu                   ));
+        emulator_cb_read_from_save_file((uint8_t*) &ppu, sizeof(ppu));
     }
     if (0 == ret)
     {
-        emulator_cb_read_from_save_file((uint8_t*) &ppu_state             , sizeof(ppu_state             ));
+        emulator_cb_read_from_save_file((uint8_t*) &ppu_state, sizeof(ppu_state));
     }
     if (0 == ret)
     {
-        emulator_cb_read_from_save_file((uint8_t*) &pixel_fetcher         , sizeof(pixel_fetcher         ));
+        emulator_cb_read_from_save_file((uint8_t*) &pixel_fetcher, sizeof(pixel_fetcher));
     }
     if (0 == ret)
     {
-        emulator_cb_read_from_save_file((uint8_t*) &window_tile_map_0x9800, sizeof(window_tile_map_0x9800));
-    }
-    if (0 == ret)
-    {
-        emulator_cb_read_from_save_file((uint8_t*) &window_tile_map_0x9C00, sizeof(window_tile_map_0x9C00));
-    }
-    if (0 == ret)
-    {
-        emulator_cb_read_from_save_file((uint8_t*) &window_tile_data_0    , sizeof(window_tile_data_0    ));
-    }
-    if (0 == ret)
-    {
-        emulator_cb_read_from_save_file((uint8_t*) &window_tile_data_1    , sizeof(window_tile_data_1    ));
+        emulator_cb_read_from_save_file((uint8_t*) &vram, sizeof(vram));
     }
 
     return ret;
