@@ -166,6 +166,7 @@ typedef struct
     ppu_mode_t mode;
     uint32_t line_dot_cnt;
     uint32_t lx;
+    uint8_t x_discard_count;
     uint8_t pixel_delay;
     uint8_t obj_size;
 } ppu_state_t;
@@ -615,6 +616,7 @@ void gbc_ppu_tick(void)
                 ppu_state.lx = 0;
                 ppu_state.pixel_delay = 12;
                 ppu_state.pixel_delay += ppu.scx & 0x07;
+                ppu_state.x_discard_count = ppu.scx & 0x07;
                 ppu_state.mode = mode3_draw;
             }
         }
@@ -632,7 +634,15 @@ void gbc_ppu_tick(void)
 
                 if (pfs_suspended_e == pixel_fetcher.obj_state)
                 {
-                    if (ppu_pixel_fifo_pop(&pixel_fetcher.bg_fifo , &pixel))
+                    if (0 != ppu_state.x_discard_count)
+                    {
+                        if (ppu_pixel_fifo_pop(&pixel_fetcher.bg_fifo , &pixel))
+                        {
+                            ppu_pixel_fifo_pop(&pixel_fetcher.obj_fifo, &pixel);
+                            ppu_state.x_discard_count--;
+                        }
+                    }
+                    else if (ppu_pixel_fifo_pop(&pixel_fetcher.bg_fifo , &pixel))
                     {
                         pixel_t sprite_pixel;
                         uint8_t color_index;
@@ -886,7 +896,11 @@ void gbc_ppu_set_memory(uint16_t addr, uint8_t val)
 
         case LCDC:
         {
-            printf("lcdc=%02x\n", val);
+            // if (!(val & LCDC_BG_WNDOW_EN_PRIO)) printf("window prio\n");
+            // if (!(val & LCDC_OBJ_EN)) printf("obj off\n");
+            
+            // printf("lcdc=%02x\n", val);
+
             ppu.lcdc = val;
         }
         break;
