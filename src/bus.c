@@ -81,7 +81,6 @@ typedef struct
 	} vram_dma;
 
 #if (0 == BUILD_TEST_DLL)
-	uint8_t rom[512][16*1024];
 	uint8_t wram[8][4*1024];
 	uint8_t ext_ram[16][8*1024];
 	uint8_t hram[127];
@@ -139,6 +138,7 @@ typedef struct
  *  private data                                                       *
  *---------------------------------------------------------------------*/
 static bus_t bus;
+static uint8_t rom[512][16*1024];
 
 /*---------------------------------------------------------------------*
  *  private function declarations                                      *
@@ -295,13 +295,13 @@ uint8_t bus_get_memory(uint16_t addr)
 	{
 		case 0x0000 ... 0x3FFF:   // Permanently mapped ROM Bank
 		{
-			ret = bus.rom[0][addr & 0x3FFF];
+			ret = rom[0][addr & 0x3FFF];
 		}
 		break;
 
 		case 0x4000 ... 0x7FFF:   // Area for switch ROM Bank
 		{
-			ret = bus.rom[bus.rom_banksel][addr & 0x3FFF];
+			ret = rom[bus.rom_banksel][addr & 0x3FFF];
 		}
 		break;
 
@@ -698,11 +698,24 @@ bool bus_init_memory(const char *filename)
 
 	if (false != ret)
 	{
-		fread(bus.rom, 1, fileSize, gbFile);
+		fread(rom, 1, fileSize, gbFile);
 		fclose(gbFile);
 	}
 
 	return ret;
+}
+
+
+void gbc_bus_write_internal_state(void)
+{
+	emulator_cb_write_to_save_file((uint8_t*) &bus, sizeof(bus_t));
+	return;
+}
+
+
+int gbc_bus_set_internal_state(void)
+{
+	return emulator_cb_read_from_save_file((uint8_t*) &bus, sizeof(bus_t));
 }
 
 void bus_init(void)

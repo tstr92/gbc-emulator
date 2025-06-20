@@ -1011,6 +1011,54 @@ void emulator_get_video_data(uint32_t *data)
     }
 }
 
+void gbc_ppu_write_internal_state(void)
+{
+    emulator_cb_write_to_save_file((uint8_t*) &ppu                   , sizeof(ppu                   ));
+    emulator_cb_write_to_save_file((uint8_t*) &ppu_state             , sizeof(ppu_state             ));
+    emulator_cb_write_to_save_file((uint8_t*) &pixel_fetcher         , sizeof(pixel_fetcher         ));
+    emulator_cb_write_to_save_file((uint8_t*) &window_tile_map_0x9800, sizeof(window_tile_map_0x9800));
+    emulator_cb_write_to_save_file((uint8_t*) &window_tile_map_0x9C00, sizeof(window_tile_map_0x9C00));
+    emulator_cb_write_to_save_file((uint8_t*) &window_tile_data_0    , sizeof(window_tile_data_0    ));
+    emulator_cb_write_to_save_file((uint8_t*) &window_tile_data_1    , sizeof(window_tile_data_1    ));
+    return;
+}
+
+int gbc_ppu_set_internal_state(void)
+{
+    int ret = 0;
+
+    if (0 == ret)
+    {
+        emulator_cb_read_from_save_file((uint8_t*) &ppu                   , sizeof(ppu                   ));
+    }
+    if (0 == ret)
+    {
+        emulator_cb_read_from_save_file((uint8_t*) &ppu_state             , sizeof(ppu_state             ));
+    }
+    if (0 == ret)
+    {
+        emulator_cb_read_from_save_file((uint8_t*) &pixel_fetcher         , sizeof(pixel_fetcher         ));
+    }
+    if (0 == ret)
+    {
+        emulator_cb_read_from_save_file((uint8_t*) &window_tile_map_0x9800, sizeof(window_tile_map_0x9800));
+    }
+    if (0 == ret)
+    {
+        emulator_cb_read_from_save_file((uint8_t*) &window_tile_map_0x9C00, sizeof(window_tile_map_0x9C00));
+    }
+    if (0 == ret)
+    {
+        emulator_cb_read_from_save_file((uint8_t*) &window_tile_data_0    , sizeof(window_tile_data_0    ));
+    }
+    if (0 == ret)
+    {
+        emulator_cb_read_from_save_file((uint8_t*) &window_tile_data_1    , sizeof(window_tile_data_1    ));
+    }
+
+    return ret;
+}
+
 /*---------------------------------------------------------------------*
  *  eof                                                                *
  *---------------------------------------------------------------------*/

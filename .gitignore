@@ -6,3 +6,4 @@ sm83-test-data-master
 .roms
 gbc_emulator.code-workspace
 assets
+*.bin

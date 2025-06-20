@@ -17,6 +17,7 @@
  *---------------------------------------------------------------------*/
 #include "timer.h"
 #include "bus.h"
+#include "emulator.h"
 #include "debug.h"
 
 /*---------------------------------------------------------------------*
@@ -30,6 +31,17 @@
 #define TAC_CLKSEL_MSK    0x03
 #define TAC_EN_MSK        0x04
 
+typedef struct
+{
+    uint8_t DIVA;
+    uint8_t DIVA_PRESC_CNT;
+    uint8_t TIMA;
+    uint32_t TIMA_PRESC_CNT;
+    uint8_t TMA;
+    uint8_t TAC;
+} timer_t;
+
+
 /*---------------------------------------------------------------------*
  *  external declarations                                              *
  *---------------------------------------------------------------------*/
@@ -41,13 +53,7 @@
 /*---------------------------------------------------------------------*
  *  private data                                                       *
  *---------------------------------------------------------------------*/
-static uint8_t DIVA = 0;
-static uint8_t DIVA_PRESC_CNT = 0;
-
-static uint8_t TIMA = 0;
-static uint32_t TIMA_PRESC_CNT = 0;
-static uint8_t TMA = 0;
-static uint8_t TAC = 0;
+timer_t timer = {0};
 
 /*---------------------------------------------------------------------*
  *  private function declarations                                      *
@@ -63,22 +69,22 @@ static uint8_t TAC = 0;
 void gbc_timer_tick(void)
 {
     static const uint32_t TAC_CLKSEL_LUT[4] = {(256 * 4), (4 * 4), (16 * 4), (64 * 4)};
-    const uint32_t TIMA_PRESCALER = TAC_CLKSEL_LUT[(TAC & TAC_CLKSEL_MSK)];
+    const uint32_t TIMA_PRESCALER = TAC_CLKSEL_LUT[(timer.TAC & TAC_CLKSEL_MSK)];
 
-    if (0 == ++DIVA_PRESC_CNT)
+    if (0 == ++timer.DIVA_PRESC_CNT)
     {
-        DIVA++;
+        timer.DIVA++;
     }
 
-    if (TAC & TAC_EN_MSK)
+    if (timer.TAC & TAC_EN_MSK)
     {
-        if (TIMA_PRESCALER <= ++TIMA_PRESC_CNT)
+        if (TIMA_PRESCALER <= ++timer.TIMA_PRESC_CNT)
         {
-            TIMA_PRESC_CNT = 0;
-            TIMA++;
-            if (0 == TIMA)
+            timer.TIMA_PRESC_CNT = 0;
+            timer.TIMA++;
+            if (0 == timer.TIMA)
             {
-                TIMA = TMA;
+                timer.TIMA = timer.TMA;
                 BUS_SET_IRQ(IRQ_TIMER);
             }
         }
@@ -89,7 +95,7 @@ void gbc_timer_tick(void)
 
 void gbc_timer_diva_reset(void)
 {
-    DIVA = 0;
+    timer.DIVA = 0;
 }
 
 uint8_t gbc_timer_get_memory(uint16_t addr)
@@ -102,25 +108,25 @@ uint8_t gbc_timer_get_memory(uint16_t addr)
     {
         case TIMER_ADDR_DIV:
         {
-            ret = DIVA;
+            ret = timer.DIVA;
         }
         break;
 
         case TIMER_ADDR_TIMA:
         {
-            ret = TIMA;
+            ret = timer.TIMA;
         }
         break;
 
         case TIMER_ADDR_TMA:
         {
-            ret = TMA;
+            ret = timer.TMA;
         }
         break;
 
         case TIMER_ADDR_TAC:
         {
-            ret = TAC;
+            ret = timer.TAC;
         }
         break;
 
@@ -138,25 +144,25 @@ void gbc_timer_set_memory(uint16_t addr, uint8_t val)
     {
         case TIMER_ADDR_DIV:
         {
-            DIVA = 0;
+            timer.DIVA = 0;
         }
         break;
 
         case TIMER_ADDR_TIMA:
         {
-            TIMA = val;
+            timer.TIMA = val;
         }
         break;
 
         case TIMER_ADDR_TMA:
         {
-            TMA = val;
+            timer.TMA = val;
         }
         break;
 
         case TIMER_ADDR_TAC:
         {
-            TAC = val;
+            timer.TAC = val;
         }
         break;
 
@@ -164,6 +170,17 @@ void gbc_timer_set_memory(uint16_t addr, uint8_t val)
         DBG_ERROR();
         break;
     }
+}
+
+void gbc_tim_write_internal_state(void)
+{
+	emulator_cb_write_to_save_file((uint8_t*) &timer, sizeof(timer_t));
+	return;
+}
+
+int gbc_tim_set_internal_state(void)
+{
+	return emulator_cb_read_from_save_file((uint8_t*) &timer, sizeof(timer_t));
 }
 
 /*---------------------------------------------------------------------*

@@ -1126,6 +1126,44 @@ void emulator_get_audio_data(uint8_t *ch_r, uint8_t *ch_l, size_t *num_samples)
     apu.stereo_data.index = 0;
 }
 
+void gbc_apu_write_internal_state(void)
+{
+    emulator_cb_write_to_save_file((uint8_t*) &apu, sizeof(apu_mem_t));
+    emulator_cb_write_to_save_file((uint8_t*) &ch1, sizeof(ch12_t));
+    emulator_cb_write_to_save_file((uint8_t*) &ch2, sizeof(ch12_t));
+    emulator_cb_write_to_save_file((uint8_t*) &ch3, sizeof(ch3_t));
+    emulator_cb_write_to_save_file((uint8_t*) &ch4, sizeof(ch4_t));
+    return;
+}
+
+int gbc_apu_set_internal_state(void)
+{
+    int ret = 0;
+
+    if (0 == ret)
+    {
+        ret = emulator_cb_read_from_save_file((uint8_t*) &apu, sizeof(apu_mem_t));
+    }
+    if (0 == ret)
+    {
+        ret = emulator_cb_read_from_save_file((uint8_t*) &ch1, sizeof(ch12_t   ));
+    }
+    if (0 == ret)
+    {
+        ret = emulator_cb_read_from_save_file((uint8_t*) &ch2, sizeof(ch12_t   ));
+    }
+    if (0 == ret)
+    {
+        ret = emulator_cb_read_from_save_file((uint8_t*) &ch3, sizeof(ch3_t    ));
+    }
+    if (0 == ret)
+    {
+        ret = emulator_cb_read_from_save_file((uint8_t*) &ch4, sizeof(ch4_t    ));
+    }
+
+    return ret;
+}
+
 /*---------------------------------------------------------------------*
  *  eof                                                                *
  *---------------------------------------------------------------------*/

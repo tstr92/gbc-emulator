@@ -42,6 +42,9 @@ uint8_t gbc_apu_get_memory(uint16_t addr);
 /* internal: only call this for address 0xFF10 - 0xFF3F , 0xFF76-0xFF77 (RO) */
 void gbc_apu_set_memory(uint16_t addr, uint8_t val);
 
+void gbc_apu_write_internal_state(void);
+int gbc_apu_set_internal_state(void);
+
 /*---------------------------------------------------------------------*
  *  global data                                                        *
  *---------------------------------------------------------------------*/

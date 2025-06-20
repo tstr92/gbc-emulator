@@ -20,6 +20,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <math.h>
+#include <time.h>
 #include "emulator.h"
 
 /*---------------------------------------------------------------------*
@@ -94,6 +95,8 @@ static int gEmulatorDataCollected = 0;
 static int gActiveMenuLine = 0;
 static uint8_t gEmulatorSpeed = 10; // 10 ... 20 = 100% ... 200%
 static int32_t gVolume = 50;
+FILE *gSaveFile = NULL;
+long gSaveFileSize = 0;
 
 static key_t keys[8] =
 {
@@ -110,14 +113,15 @@ static key_t keys[8] =
 /*---------------------------------------------------------------------*
  *  private function declarations                                      *
  *---------------------------------------------------------------------*/
-static void   audio_callback     (void* userdata, Uint8* stream, int len);
-static Uint32 timerCallback      (Uint32 interval, void* param);
-static int    emulator_thread_fn (void *data);
-static int    init_sdl_rsc       (sdl_rsc_t *p_sdl_rsc);
-static void   destroy_sdl_rsc    (sdl_rsc_t *p_sdl_rsc);
-static void   handle_menu        (sdl_rsc_t *p_sdl_rsc, SDL_Event event);
-static void   render             (sdl_rsc_t *p_sdl_rsc);
-static void   fps                (sdl_rsc_t *p_sdl_rsc);
+static void   audio_callback      (void* userdata, Uint8* stream, int len);
+static Uint32 timerCallback       (Uint32 interval, void* param);
+static int    emulator_thread_fn  (void *data);
+static int    init_sdl_rsc        (sdl_rsc_t *p_sdl_rsc);
+static void   destroy_sdl_rsc     (sdl_rsc_t *p_sdl_rsc);
+static void   handle_menu         (sdl_rsc_t *p_sdl_rsc, SDL_Event event);
+static void   render              (sdl_rsc_t *p_sdl_rsc);
+static void   fps                 (sdl_rsc_t *p_sdl_rsc);
+static int    save_emulator_state (char *fname);
 
 /*---------------------------------------------------------------------*
  *  private functions                                                  *
@@ -341,12 +345,13 @@ void renderTextLine(sdl_rsc_t *p_sdl_rsc, const char* text, SDL_Color color, int
 
 static void handle_menu(sdl_rsc_t *p_sdl_rsc, SDL_Event event)
 {
-    char menu_txt[3][64];
+    char menu_txt[4][64];
 
     /* prepare menu text */
     snprintf(&menu_txt[0][0], sizeof(menu_txt[0]), "Settings");
     snprintf(&menu_txt[1][0], sizeof(menu_txt[1]), "Emulator Speed        %1.1f", ((float)gEmulatorSpeed / 10.0));
     snprintf(&menu_txt[2][0], sizeof(menu_txt[1]), "Volume                %3u", gVolume);
+    snprintf(&menu_txt[3][0], sizeof(menu_txt[0]), "Save Game");
     
 
     /* copy last screen */
@@ -391,11 +396,28 @@ static void handle_menu(sdl_rsc_t *p_sdl_rsc, SDL_Event event)
             }
         }
 
+        if (3 == gActiveMenuLine)
+        {
+            if (NULL == gSaveFile)
+            {
+#if 0
+                char fileName[64];
+                time_t now = time(NULL);
+                struct tm *t = localtime(&now);
+                snprintf(fileName, sizeof(fileName), "savegame_%4u-%02u-%02u_%02u-%02u-%02u.bin",
+                    1900+t->tm_year, t->tm_mon, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
+                save_emulator_state(fileName);
+#else
+                save_emulator_state("savegame.bin");
+#endif
+            }
+        }
+
         if ((SDLK_UP == event.key.keysym.sym) && (1 < gActiveMenuLine))
         {
             gActiveMenuLine--;
         }
-        else if ((SDLK_DOWN == event.key.keysym.sym) && (2 > gActiveMenuLine))
+        else if ((SDLK_DOWN == event.key.keysym.sym) && (3 > gActiveMenuLine))
         {
             gActiveMenuLine++;
         }
@@ -451,6 +473,30 @@ static void fps(sdl_rsc_t *p_sdl_rsc)
     return;
 }
 
+static int save_emulator_state(char *fname)
+{
+    if (NULL == fname)
+    {
+        return 1;
+    }
+
+    gSaveFile = fopen(fname, "wb");
+
+    if (NULL == gSaveFile)
+    {
+        return 1;
+    }
+
+    emulator_write_save_file();
+
+    fclose(gSaveFile);
+
+    gSaveFile = NULL;
+    gSaveFileSize = 0;
+
+    return 0;
+}
+
 /*---------------------------------------------------------------------*
  *  Emulator Callbacks                                                 *
  *---------------------------------------------------------------------*/
@@ -496,6 +542,33 @@ uint8_t emulator_get_speed(void)
     return gEmulatorSpeed;
 }
 
+
+void emulator_cb_write_to_save_file(uint8_t *data, size_t size)
+{
+    if (gSaveFile)
+    {
+        fwrite(data, 1, size, gSaveFile);
+    }
+}
+
+int emulator_cb_read_from_save_file(uint8_t *data, size_t size)
+{
+    int ret = 1;
+    if (gSaveFile)
+    {
+        long current_pos = ftell(gSaveFile);
+        if ((-1 != current_pos) && (size <= (gSaveFileSize - current_pos)))
+        {
+            size_t read_cnt = fread(data, 1, size, gSaveFile);
+            if (read_cnt == size)
+            {
+                ret = 0;
+            }
+        }
+    }
+    return ret;
+}
+
 /*---------------------------------------------------------------------*
  *  public functions                                                   *
  *---------------------------------------------------------------------*/
@@ -511,6 +584,24 @@ int main(int argc, char* argv[])
     {
         fprintf(stderr, "Error: Could not initialize emulator.\n");
         return 1;
+    }
+
+    if (2 < argc)
+    {
+        gSaveFile = fopen(argv[2], "rb");
+        if (NULL != gSaveFile)
+        {
+            fseek(gSaveFile, 0, SEEK_END);
+            gSaveFileSize = ftell(gSaveFile);
+            if (-1 != gSaveFileSize)
+            {
+                fseek(gSaveFile, 0, SEEK_SET);
+                emulator_load_save_file();
+            }
+        }
+        fclose(gSaveFile);
+        gSaveFile = NULL;
+        gSaveFileSize = 0;
     }
 
     sdl_rsc_t sdl_rsc = (sdl_rsc_t)

@@ -22,6 +22,7 @@
 #include "debug.h"
 #include "bus.h"
 #include "timer.h"
+#include "emulator.h"
 
 /*---------------------------------------------------------------------*
  *  local definitions                                                  *
@@ -1793,6 +1794,17 @@ uint64_t gbc_cpu_get_cycle_cnt(void)
 void gbc_cpu_stall(uint32_t num_ticks)
 {
 	cpu.next_instruction += num_ticks;
+}
+
+void gbc_cpu_write_internal_state(void)
+{
+	emulator_cb_write_to_save_file((uint8_t*) &cpu, sizeof(sm83_t));
+	return;
+}
+
+int gbc_cpu_set_internal_state(void)
+{
+	return emulator_cb_read_from_save_file((uint8_t*) &cpu, sizeof(sm83_t));
 }
 
 #if (0 < BUILD_TEST_DLL)

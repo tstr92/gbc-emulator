@@ -42,6 +42,10 @@ uint8_t gbc_ppu_get_memory(uint16_t addr);
 /* internal: only call this for address 0xFF10 - 0xFF3F */
 void gbc_ppu_set_memory(uint16_t addr, uint8_t val);
 
+
+void gbc_ppu_write_internal_state(void);
+int gbc_ppu_set_internal_state(void);
+
 /*---------------------------------------------------------------------*
  *  global data                                                        *
  *---------------------------------------------------------------------*/

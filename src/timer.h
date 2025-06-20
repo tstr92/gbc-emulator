@@ -42,6 +42,10 @@ uint8_t gbc_timer_get_memory(uint16_t addr);
 /* internal: only call this for address 0xFF04 - 0xFF07 */
 void gbc_timer_set_memory(uint16_t addr, uint8_t val);
 
+
+void gbc_tim_write_internal_state(void);
+int gbc_tim_set_internal_state(void);
+
 /*---------------------------------------------------------------------*
  *  global data                                                        *
  *---------------------------------------------------------------------*/

@@ -66,6 +66,9 @@ bool bus_init_memory(const char *filename);
 int bus_load_game(char *fileName);
 void bus_run(void);
 
+void gbc_bus_write_internal_state(void);
+int gbc_bus_set_internal_state(void);
+
 /*---------------------------------------------------------------------*
  *  global data                                                        *
  *---------------------------------------------------------------------*/

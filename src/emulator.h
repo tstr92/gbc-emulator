@@ -46,6 +46,14 @@ void emulator_get_audio_data(uint8_t *ch_r, uint8_t *ch_l, size_t *num_samples);
 void emulator_get_video_data(uint32_t *data);
 uint8_t emulator_get_speed(void);
 
+void emulator_write_save_file(void);
+int emulator_load_save_file(void);
+
+/* 
+ */
+void emulator_cb_write_to_save_file(uint8_t *data, size_t size);
+int emulator_cb_read_from_save_file(uint8_t *data, size_t size);
+
 /* Callback-Function that reads the current Button-states.
  * Use Defines GBC_JOYPAD_* to set joypad data.
  * This function should return immediately with a buffered

@@ -22,6 +22,7 @@
 #include "cpu.h"
 #include "timer.h"
 #include "apu.h"
+#include "ppu.h"
 #include "debug.h"
 
 /*---------------------------------------------------------------------*
@@ -95,6 +96,43 @@ void emulator_run(void)
 __attribute__((weak)) uint8_t emulator_get_speed(void)
 {
     return 10;
+}
+
+void emulator_write_save_file(void)
+{
+	gbc_cpu_write_internal_state();
+	gbc_bus_write_internal_state();
+	gbc_ppu_write_internal_state();
+	gbc_apu_write_internal_state();
+	gbc_tim_write_internal_state();
+}
+
+int emulator_load_save_file(void)
+{
+	int ret = 0;
+
+	if (0 == ret)
+	{
+		gbc_cpu_set_internal_state();
+	}
+	if (0 == ret)
+	{
+		gbc_bus_set_internal_state();
+	}
+	if (0 == ret)
+	{
+		gbc_ppu_set_internal_state();
+	}
+	if (0 == ret)
+	{
+		gbc_apu_set_internal_state();
+	}
+	if (0 == ret)
+	{
+		gbc_tim_set_internal_state();
+	}
+
+	return ret;
 }
 
 /*---------------------------------------------------------------------*
