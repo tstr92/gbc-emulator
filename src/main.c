@@ -413,7 +413,7 @@ static void handle_menu(sdl_rsc_t *p_sdl_rsc, SDL_Event event)
 
         if (3 == gActiveMenuLine)
         {
-            if (NULL == gSaveFile)
+            if ((NULL == gSaveFile) && (SDLK_RETURN == event.key.keysym.sym))
             {
 #if 0
                 char fileName[64];
