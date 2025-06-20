@@ -94,6 +94,8 @@
 
 #define OPRI_PRIO_MODE_DMG      (1<<0) // 0: Gameboy Color, 1 Original Gameboy
 
+#define COLOR_ID_MSK            (0x03)
+
 typedef struct
 {
     uint8_t y_pos;
@@ -170,7 +172,7 @@ typedef struct
 
 typedef struct
 {
-    uint8_t color;        // a value between 0 and 3
+    uint8_t color_id;     // a value between 0 and 3
     uint8_t palette;      // on CGB a value between 0 and 7 and on DMG this only applies to objects
     uint8_t sprite_prio;  // on CGB this is the OAM index for the object and on DMG this doesn’t exist
     uint8_t bg_prio;      // holds the value of the OBJ-to-BG Priority bit
@@ -396,7 +398,7 @@ void ppu_pixel_fetcher_do(void)
                 {
                     pixel_t pixel = (pixel_t)
                     {
-                        .color       = ((pixel_fetcher.obj_tile_data[0] & (1<<i)) ? 0x01 : 0x00) |
+                        .color_id    = ((pixel_fetcher.obj_tile_data[0] & (1<<i)) ? 0x01 : 0x00) |
                                        ((pixel_fetcher.obj_tile_data[1] & (1<<i)) ? 0x02 : 0x00) ,
                         .sprite_prio = ppu.scobj.sprites[ppu.scobj.rd].priority,
                     };
@@ -409,7 +411,7 @@ void ppu_pixel_fetcher_do(void)
                 {
                     pixel_t pixel = (pixel_t)
                     {
-                        .color       = ((pixel_fetcher.obj_tile_data[0] & (1<<i)) ? 0x01 : 0x00) |
+                        .color_id    = ((pixel_fetcher.obj_tile_data[0] & (1<<i)) ? 0x01 : 0x00) |
                                        ((pixel_fetcher.obj_tile_data[1] & (1<<i)) ? 0x02 : 0x00) ,
                         .sprite_prio = ppu.scobj.sprites[ppu.scobj.rd].priority,
                     };
@@ -517,8 +519,8 @@ void ppu_pixel_fetcher_do(void)
             {
                 pixel_t pixel = (pixel_t)
                 {
-                    .color       = ((pixel_fetcher.bg_tile_data[0] & (1<<i)) ? 0x01 : 0x00) |
-                                   ((pixel_fetcher.bg_tile_data[1] & (1<<i)) ? 0x02 : 0x00) ,
+                    .color_id = ((pixel_fetcher.bg_tile_data[0] & (1<<i)) ? 0x01 : 0x00) |
+                                ((pixel_fetcher.bg_tile_data[1] & (1<<i)) ? 0x02 : 0x00) ,
                 };
                 ppu_pixel_fifo_push(&pixel_fetcher.bg_fifo, pixel);
             }
@@ -627,15 +629,26 @@ void gbc_ppu_tick(void)
                     if (ppu_pixel_fifo_pop(&pixel_fetcher.bg_fifo , &pixel))
                     {
                         pixel_t sprite_pixel;
+                        uint8_t color_index;
+                        uint8_t pallette;
+                        uint8_t id;
+
+                        pallette = ppu.bgp;
+
                         if (ppu_pixel_fifo_pop(&pixel_fetcher.obj_fifo, &sprite_pixel))
                         {
-                            if (!((0 == sprite_pixel.color) ||
-                                  (sprite_pixel.bg_prio && (0 != pixel.color))))
+                            if (!((0 == sprite_pixel.color_id) ||
+                                  (sprite_pixel.bg_prio && (0 != pixel.color_id))))
                             {
                                 pixel = sprite_pixel;
+                                pallette = sprite_pixel.palette ? ppu.obp1 : ppu.obp0;
                             }
                         }
-                        screen[ppu.ly * 160 + ppu_state.lx].raw = debug_palette[pixel.color & 0x03];
+
+                        id = (pixel.color_id & 0x03) * 2; // 0, 2, 4, 6
+                        color_index = (pallette & (COLOR_ID_MSK << id)) >> id;
+
+                        screen[ppu.ly * 160 + ppu_state.lx].raw = debug_palette[color_index];
                         ppu_state.lx++;
                     }
                 }
