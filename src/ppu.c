@@ -674,7 +674,7 @@ void gbc_ppu_tick(void)
 
                 ppu_state.pixel_delay = 1;
 
-                if (pfs_suspended_e == pixel_fetcher.obj_state)
+                // if (pfs_suspended_e == pixel_fetcher.obj_state)
                 {
                     if (0 != ppu_state.x_discard_count)
                     {
