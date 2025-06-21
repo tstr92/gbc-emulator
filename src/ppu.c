@@ -96,6 +96,10 @@
 
 #define COLOR_ID_MSK            (0x03)
 
+#define PALETTE_ADDR_MSK        (0x1F) // Bits 0-5: Address, 
+#define PALETTE_AUTO_INC_MSK    (0x80) // Bit 7: auto increment
+#define PALETTE_SPEC_MSK        (PALETTE_ADDR_MSK | PALETTE_AUTO_INC_MSK)
+
 typedef struct
 {
     uint8_t y_pos;
@@ -275,14 +279,20 @@ static ppu_mem_t ppu;
 static ppu_state_t ppu_state;
 static pixel_fetcher_t pixel_fetcher;
 static vram_t vram[2];
+static uint8_t obj_cram[64];
+static uint8_t bg_cram[64];
 
 static screen_pixel_t screen0[144][160];
 static screen_pixel_t screen1[144][160];
 static screen_pixel_t *screen = (screen_pixel_t *) &screen0[0][0];
 
-uint32_t debug_palette[4] =
+uint32_t dmg_palette[4] =
 {
     0xFFFFFFFF, 0xAAAAAAAA, 0x55555555, 0x00000000
+    
+    /* *Original* DMG Palette */
+    /* credit: https://lospec.com/palette-list/dmg-nso */
+    // 0x8cad2800, 0x6c942100, 0x426b2900, 0x21423100
 };
 
 /*---------------------------------------------------------------------*
@@ -686,6 +696,7 @@ void gbc_ppu_tick(void)
                     }
                     else if (ppu_pixel_fifo_pop(&pixel_fetcher.bg_fifo , &pixel))
                     {
+                        uint8_t *cram = &bg_cram[0];
                         pixel_t sprite_pixel;
                         uint8_t color_index;
                         uint8_t pallette;
@@ -700,13 +711,27 @@ void gbc_ppu_tick(void)
                             {
                                 pixel = sprite_pixel;
                                 pallette = sprite_pixel.palette ? ppu.obp1 : ppu.obp0;
+                                cram = &bg_cram[0];
                             }
                         }
 
                         id = (pixel.color_id & 0x03) * 2; // 0, 2, 4, 6
                         color_index = (pallette & (COLOR_ID_MSK << id)) >> id;
 
-                        screen[ppu.ly * 160 + ppu_state.lx].raw = debug_palette[color_index];
+                        if (bus_DMG_mode())
+                        {
+                            screen[ppu.ly * 160 + ppu_state.lx].raw = dmg_palette[color_index];
+                        }
+                        else
+                        {
+                            uint16_t color = ((uint16_t) cram[(pixel.palette << 3) + (color_index << 1) + 0]) << 0 |
+                                            ((uint16_t) cram[(pixel.palette << 3) + (color_index << 1) + 1]) << 8;
+                            
+                            screen[ppu.ly * 160 + ppu_state.lx].R = ((color & 0x001f) >>  0) << 3;
+                            screen[ppu.ly * 160 + ppu_state.lx].G = ((color & 0x03e0) >>  5) << 3;
+                            screen[ppu.ly * 160 + ppu_state.lx].B = ((color & 0x7c00) >> 10) << 3;
+                        }
+
                         ppu_state.lx++;
                     }
                 }
@@ -888,7 +913,10 @@ uint8_t gbc_ppu_get_memory(uint16_t addr)
 
         case BCPD_BGPD:
         {
-            ret = ppu.bcpd_bgpd;
+            if (mode3_draw != ppu_state.mode)
+            {
+                ret = bg_cram[ppu.bcps_bgpi & PALETTE_ADDR_MSK];
+            }
         }
         break;
 
@@ -900,7 +928,10 @@ uint8_t gbc_ppu_get_memory(uint16_t addr)
 
         case OCPD_OBPD:
         {
-            ret = ppu.ocpd_obpd;
+            if (mode3_draw != ppu_state.mode)
+            {
+                ret = obj_cram[ppu.ocps_obpi & PALETTE_ADDR_MSK];
+            }
         }
         break;
 
@@ -1022,7 +1053,14 @@ void gbc_ppu_set_memory(uint16_t addr, uint8_t val)
 
         case BCPD_BGPD:
         {
-            ppu.bcpd_bgpd = val;
+            if (mode3_draw != ppu_state.mode)
+            {
+                bg_cram[ppu.bcps_bgpi & PALETTE_ADDR_MSK] = val;
+            }
+            if (ppu.bcps_bgpi & PALETTE_AUTO_INC_MSK)
+            {
+                ppu.bcps_bgpi = (ppu.bcps_bgpi + 1) & PALETTE_SPEC_MSK;
+            }
         }
         break;
 
@@ -1034,12 +1072,20 @@ void gbc_ppu_set_memory(uint16_t addr, uint8_t val)
 
         case OCPD_OBPD:
         {
-            ppu.ocpd_obpd = val;
+            if (mode3_draw != ppu_state.mode)
+            {
+                obj_cram[ppu.ocps_obpi & PALETTE_ADDR_MSK] = val;
+            }
+            if (ppu.ocps_obpi & PALETTE_AUTO_INC_MSK)
+            {
+                ppu.ocps_obpi = (ppu.ocps_obpi + 1) & PALETTE_SPEC_MSK;
+            }
         }
         break;
 
         case OPRI:
         {
+            printf("todo opri\n");
             ppu.opri = val;
         }
         break;
@@ -1078,6 +1124,8 @@ void gbc_ppu_write_internal_state(void)
     emulator_cb_write_to_save_file((uint8_t*) &ppu_state    , sizeof(ppu_state    ), "ppu_state"    );
     emulator_cb_write_to_save_file((uint8_t*) &pixel_fetcher, sizeof(pixel_fetcher), "pixel_fetcher");
     emulator_cb_write_to_save_file((uint8_t*) &vram         , sizeof(vram         ), "vram"         );
+    emulator_cb_write_to_save_file((uint8_t*) &bg_cram      , sizeof(bg_cram      ), "bg_cram"      );
+    emulator_cb_write_to_save_file((uint8_t*) &obj_cram     , sizeof(obj_cram     ), "obj_cram"     );
     return;
 }
 
@@ -1100,6 +1148,14 @@ int gbc_ppu_set_internal_state(void)
     if (0 == ret)
     {
         emulator_cb_read_from_save_file((uint8_t*) &vram, sizeof(vram));
+    }
+    if (0 == ret)
+    {
+        emulator_cb_read_from_save_file((uint8_t*) &bg_cram, sizeof(bg_cram));
+    }
+    if (0 == ret)
+    {
+        emulator_cb_read_from_save_file((uint8_t*) &obj_cram, sizeof(obj_cram));
     }
 
     return ret;

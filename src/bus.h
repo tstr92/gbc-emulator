@@ -58,13 +58,14 @@
  *---------------------------------------------------------------------*/
 void bus_init(void);
 void bus_tick(void);
-void bus_stop_instr_cb(void);
-void bus_HBlank_cb(void);
+bool bus_DMG_mode(void);
 uint8_t bus_get_memory(uint16_t addr);
 void bus_set_memory(uint16_t addr, uint8_t val);
 bool bus_init_memory(const char *filename);
 int bus_load_game(char *fileName);
-void bus_run(void);
+
+void bus_stop_instr_cb(void);
+void bus_HBlank_cb(void);
 
 void gbc_bus_write_internal_state(void);
 int gbc_bus_set_internal_state(void);

@@ -57,6 +57,7 @@ typedef struct
 	uint8_t IE;
 	uint8_t key1;
 
+	bool dmg_mode;
 	uint8_t cartridge_type;
 
 	struct
@@ -338,6 +339,13 @@ uint8_t bus_get_memory(uint16_t addr)
 		}
 		break;
 
+		case 0xff4c:
+		{
+			printf("todo k0\n");
+			ret = 0;
+		}
+		break;
+
 		case KEY1:
 		{
 			ret = bus.key1;
@@ -416,7 +424,7 @@ uint8_t bus_get_memory(uint16_t addr)
 
 		case RP:
 		{
-			debug_printf ("Memory access 'Infrared' at 0x%04x.\n", addr);
+			ret = 0x02; // currently not receiving
 		}
 		break;
 
@@ -526,33 +534,36 @@ void bus_set_memory(uint16_t addr, uint8_t val)
 		break;
 		case 0xFF55: // VRAM DMA Length/Mode/Start
 		{
-			// printf("%04x\n", addr);
-			// if ((bus.vram_dma.active) && (HBlank_dma == bus.vram_dma.mode) && (!(val & 0x80)))
-			// {
-			// 	bus.vram_dma.active = false;
-			// }
-			// else if ((((0x0000 <= bus.vram_dma.src) && (0x7FF0 >= bus.vram_dma.src))  ||
-			//           ((0xA000 <= bus.vram_dma.src) && (0xDFF0 >= bus.vram_dma.src))) &&
-			//          ( (0x8000 <= bus.vram_dma.dst) && (0x9FF0 >= bus.vram_dma.dst)))
-			// {
-			// 	uint16_t num_blocks;
-			// 	num_blocks = ((val & VRAM_DMA_LEN_MSK) + 1);
-			// 	bus.vram_dma.active = true;
-			// 	bus.vram_dma.len = num_blocks * 16;
-			// 	if (val & VRAM_DMA_HBLANK_MSK)
-			// 	{
-			// 		bus.vram_dma.mode = HBlank_dma;
-			// 	}
-			// 	else
-			// 	{
-			// 		uint32_t num_stall_cycles;
-			// 		num_stall_cycles = (VRAM_DMA_CP_CYCLES * num_blocks) << ((bus.key1 & KEY1_DOUBLE_SPEED) ? 1 : 0);
-			// 		bus.vram_dma.mode = general_purpose_dma;
-			// 		bus_dma_cpy(bus.vram_dma.dst, bus.vram_dma.src, bus.vram_dma.len);
-			// 		gbc_cpu_stall(num_stall_cycles);
-			// 		printf("DMA Go! %d Bytes %04x -> %04X\n", bus.vram_dma.len, bus.vram_dma.src, bus.vram_dma.dst);
-			// 	}
-			// }
+			if (!bus.dmg_mode)
+			{
+				if ((bus.vram_dma.active) && (HBlank_dma == bus.vram_dma.mode) && (!(val & 0x80)))
+				{
+					bus.vram_dma.active = false;
+				}
+				else if ((((0x0000 <= bus.vram_dma.src) && (0x7FF0 >= bus.vram_dma.src))  ||
+						((0xA000 <= bus.vram_dma.src) && (0xDFF0 >= bus.vram_dma.src))) &&
+						( (0x8000 <= bus.vram_dma.dst) && (0x9FF0 >= bus.vram_dma.dst)))
+				{
+					uint16_t num_blocks;
+					num_blocks = ((val & VRAM_DMA_LEN_MSK) + 1);
+					bus.vram_dma.len = num_blocks * 16;
+					if (val & VRAM_DMA_HBLANK_MSK)
+					{
+						bus.vram_dma.mode = HBlank_dma;
+						bus.vram_dma.active = true;
+					}
+					else
+					{
+						uint32_t num_stall_cycles;
+						num_stall_cycles = (VRAM_DMA_CP_CYCLES * num_blocks) << ((bus.key1 & KEY1_DOUBLE_SPEED) ? 1 : 0);
+						bus.vram_dma.mode = general_purpose_dma;
+						bus_dma_cpy(bus.vram_dma.dst, bus.vram_dma.src, bus.vram_dma.len);
+						gbc_cpu_stall(num_stall_cycles);
+						printf("DMA Go! %d Bytes %04x -> %04X\n", bus.vram_dma.len, bus.vram_dma.src, bus.vram_dma.dst);
+						bus.vram_dma.active = false;
+					}
+				}
+			}
 		}
 		break;
 
@@ -591,7 +602,7 @@ void bus_set_memory(uint16_t addr, uint8_t val)
 		break;
 
 		case RP:
-			debug_printf ("Memory access 'Infrared' at 0x%04x.\n", addr);
+			printf("todo Infrared\n");
 		break;
 
 		case SVBK:
@@ -693,6 +704,7 @@ bool bus_init_memory(const char *filename)
 		else
 		{
 			bus.cartridge_type = header.cartridge_type;
+			bus.dmg_mode = (0 == (header.GBC_flag & 0x80));
 		}
 	}
 
@@ -759,6 +771,11 @@ void bus_tick(void)
 	}
 
 	return;
+}
+
+bool bus_DMG_mode(void)
+{
+	return bus.dmg_mode;
 }
 
 void bus_stop_instr_cb(void)
