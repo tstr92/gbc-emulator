@@ -421,32 +421,32 @@ void ppu_pixel_fetcher_do(void)
         if (ppu.scobj.sprites[ppu.scobj.rd].x_flip)
         {
             for (int i = 0; i <= (numPixels - 1); i++)
-            {
-                pixel = (pixel_t)
                 {
-                    .color_id       = ((pixel_fetcher.obj_tile_data[0] & (1<<i)) ? 0x01 : 0x00) |
-                                       ((pixel_fetcher.obj_tile_data[1] & (1<<i)) ? 0x02 : 0x00) ,
-                    .sprite_prio    = ppu.scobj.sprites[ppu.scobj.rd].priority,
-                    .oam_tile_index = ppu.scobj.sprites[ppu.scobj.rd].tile_idx,
-                };
+                    pixel = (pixel_t)
+                    {
+                        .color_id       = ((pixel_fetcher.obj_tile_data[0] & (1<<i)) ? 0x01 : 0x00) |
+                                        ((pixel_fetcher.obj_tile_data[1] & (1<<i)) ? 0x02 : 0x00) ,
+                        .sprite_prio    = ppu.scobj.sprites[ppu.scobj.rd].priority,
+                        .oam_tile_index = ppu.scobj.sprites[ppu.scobj.rd].tile_idx,
+                    };
                 newPixels.pixels[newPixels.fill_level++] = pixel;
             }
         }
         else
         {
             for (int i = (numPixels - 1); i >= 0; i--)
-            {
-                pixel = (pixel_t)
                 {
-                    .color_id    = ((pixel_fetcher.obj_tile_data[0] & (1<<i)) ? 0x01 : 0x00) |
-                                    ((pixel_fetcher.obj_tile_data[1] & (1<<i)) ? 0x02 : 0x00) ,
-                    .sprite_prio = ppu.scobj.sprites[ppu.scobj.rd].priority,
-                    .oam_tile_index = ppu.scobj.sprites[ppu.scobj.rd].tile_idx,
-                };
+                    pixel = (pixel_t)
+                    {
+                        .color_id    = ((pixel_fetcher.obj_tile_data[0] & (1<<i)) ? 0x01 : 0x00) |
+                                        ((pixel_fetcher.obj_tile_data[1] & (1<<i)) ? 0x02 : 0x00) ,
+                        .sprite_prio = ppu.scobj.sprites[ppu.scobj.rd].priority,
+                        .oam_tile_index = ppu.scobj.sprites[ppu.scobj.rd].tile_idx,
+                    };
                 newPixels.pixels[newPixels.fill_level++] = pixel;
             }
         }
-
+        
         while (ppu_pixel_fifo_pop(&pixel_fetcher.obj_fifo, &pixel))
         {
             oldPixels.pixels[oldPixels.fill_level++] = pixel;
@@ -633,7 +633,7 @@ void gbc_ppu_tick(void)
             {
                 if (ppu.lcdc & LCDC_OBJ_SIZE)
                 {
-                    printf("16\n");
+                    printf("todo LCDC_OBJ_SIZE\n");
                     ppu_state.obj_size = 16;
                 }
                 else

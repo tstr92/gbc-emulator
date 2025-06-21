@@ -559,7 +559,7 @@ void bus_set_memory(uint16_t addr, uint8_t val)
 						bus.vram_dma.mode = general_purpose_dma;
 						bus_dma_cpy(bus.vram_dma.dst, bus.vram_dma.src, bus.vram_dma.len);
 						gbc_cpu_stall(num_stall_cycles);
-						printf("DMA Go! %d Bytes %04x -> %04X\n", bus.vram_dma.len, bus.vram_dma.src, bus.vram_dma.dst);
+						// printf("DMA Go! %d Bytes %04x -> %04X\n", bus.vram_dma.len, bus.vram_dma.src, bus.vram_dma.dst);
 						bus.vram_dma.active = false;
 					}
 				}
@@ -780,7 +780,8 @@ bool bus_DMG_mode(void)
 
 void bus_stop_instr_cb(void)
 {
-	if (bus.key1 & KEY1_SWITCH_ARMED)
+	printf("stop!\n");
+	if (bus.dmg_mode && (bus.key1 & KEY1_SWITCH_ARMED))
 	{
 		bus.key1 ^= KEY1_DOUBLE_SPEED;
 		bus.key1 &= ~KEY1_SWITCH_ARMED;
