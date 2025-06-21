@@ -1761,7 +1761,7 @@ void gbc_cpu_init(void)
 	   When A=$11, you may also examine Bit 0 of the CPUs B-Register to separate between CGB (bit cleared) and
 	   GBA (bit set), by that detection it is possible to use “repaired” color palette data matching for GBA displays.
 	*/
-	cpu.af.a = 0x01;//0x11;
+	cpu.af.a = 0x11;
 
 	cpu.pc = 0x0100;
 
