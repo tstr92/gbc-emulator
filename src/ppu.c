@@ -417,7 +417,7 @@ void ppu_pixel_fetcher_do(void)
         pixel_buffer_t oldPixels = {0};
         pixel_t pixel;
 
-        int numPixels = 8 - ((pixel_fetcher.x + 8) - ppu.scobj.sprites[ppu.scobj.rd].x_pos);
+        int numPixels = 8 - ((ppu_state.lx + 8) - ppu.scobj.sprites[ppu.scobj.rd].x_pos);
         if (ppu.scobj.sprites[ppu.scobj.rd].x_flip)
         {
             for (int i = 0; i <= (numPixels - 1); i++)
@@ -684,7 +684,7 @@ void gbc_ppu_tick(void)
 
                 ppu_state.pixel_delay = 1;
 
-                // if (pfs_suspended_e == pixel_fetcher.obj_state)
+                if (pfs_suspended_e == pixel_fetcher.obj_state)
                 {
                     if (0 != ppu_state.x_discard_count)
                     {
