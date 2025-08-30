@@ -95,9 +95,9 @@ static int gEmulatorDataCollected = 0;
 static int gActiveMenuLine = 0;
 static uint8_t gEmulatorSpeed = 10; // 10 ... 20 = 100% ... 200%
 static int32_t gVolume = 50;
-FILE *gSaveFile = NULL;
-FILE *gSaveFileLog = NULL;
-long gSaveFileSize = 0;
+static FILE *gSaveFile = NULL;
+static FILE *gSaveFileLog = NULL;
+static long gSaveFileSize = 0;
 
 static key_t keys[8] =
 {

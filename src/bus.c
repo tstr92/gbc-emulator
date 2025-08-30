@@ -741,33 +741,42 @@ void bus_init(void)
 void bus_tick(void)
 {
 	static uint8_t emulation_speed_cnt = 0;
+	uint32_t cycle_cnt;
+	uint32_t dmg_cycle_cnt = 0;
 
-	/* These parts might run at Gameboy Color Double Speed */
-	int ticks = ((bus.key1 & KEY1_DOUBLE_SPEED) ? 2 : 1);
-	for (int i = 0; i < ticks; i++)
+	cycle_cnt = gbc_cpu_tick();
+
+	for (int i = 0; i < cycle_cnt; i++)
 	{
-		gbc_cpu_tick();
 		gbc_timer_tick();
+	}
+
+	for (int i = 0; i < cycle_cnt; i++)
+	{
 		bus_oam_dma_tick();
 	}
 
 	/* PPU always runs at "normal speed" */
-	gbc_ppu_tick();
-
-	/* throttle APU to always run at 4MHz, even if emulator runs at higher speed
-	 *  -> we stay at 60 fps
-	 *  -> audio pitch stays correct
-	 *  -> audio speeds up according to how quickly the game changes APU Registers
-	 */
-	if (emulation_speed_cnt < 10)
+	dmg_cycle_cnt = (bus.key1 & KEY1_DOUBLE_SPEED) ? (cycle_cnt >> 1) : cycle_cnt;
+	for (int i = 0; i < dmg_cycle_cnt; i++)
 	{
-		gbc_apu_tick();
-	}
+		gbc_ppu_tick();
 
-	emulation_speed_cnt++;
-	if (emulation_speed_cnt >= emulator_get_speed())
-	{
-		emulation_speed_cnt = 0;
+		/* throttle APU to always run at 4MHz, even if emulator runs at higher speed
+		*  -> we stay at 60 fps
+		*  -> audio pitch stays correct
+		*  -> audio speeds up according to how quickly the game changes APU Registers
+		*/
+		if (emulation_speed_cnt < 10)
+		{
+			gbc_apu_tick();
+		}
+
+		emulation_speed_cnt++;
+		if (emulation_speed_cnt >= emulator_get_speed())
+		{
+			emulation_speed_cnt = 0;
+		}
 	}
 
 	return;

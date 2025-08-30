@@ -97,6 +97,7 @@ typedef struct
 	uint16_t sp;	// stack pointer
 	uint16_t pc;	// program counter
 
+	uint32_t stall_cnt;
 	uint64_t cycle_cnt;
 	uint64_t next_instruction;
 
@@ -199,9 +200,9 @@ static void eval_C_flag_c(uint8_t target, uint8_t operand, bool sub, uint8_t car
 static void eval_C_flag(uint8_t target, uint8_t operand, bool sub);
 static void eval_C_flag_16(uint16_t target, uint16_t operand);
 static void set_C_flag(bool c);
-static void cpu_handle_opcode(void);
+static uint8_t cpu_handle_opcode(void);
 static void cpu_print_state(void);
-static bool cpu_handle_interrupt(void);
+static uint8_t cpu_handle_interrupt(void);
 
 /*---------------------------------------------------------------------*
  *  private functions                                                  *
@@ -353,8 +354,9 @@ static void set_C_flag(bool c)
 	}
 }
 
-static void cpu_handle_opcode(void)
+static uint8_t cpu_handle_opcode(void)
 {
+	uint8_t cycle_cnt = 0;
 	uint8_t opcode;
 	opcode_t opcode_type;
 
@@ -374,7 +376,7 @@ static void cpu_handle_opcode(void)
 
 	case OPC_NOP:
 	{
-		cpu.next_instruction += 4;
+		cycle_cnt = 4;
 		cpu.pc++;
 	}
 	break;
@@ -382,7 +384,7 @@ static void cpu_handle_opcode(void)
 	case OPC_STOP:
 	{
 		cpu.stopped = true;
-		cpu.next_instruction += 4;
+		cycle_cnt = 4;
 		cpu.pc += 2;
 		gbc_timer_diva_reset();
 		bus_stop_instr_cb();
@@ -391,7 +393,7 @@ static void cpu_handle_opcode(void)
 	
 	case OPC_HALT:
 	{
-		cpu.next_instruction += 4;
+		cycle_cnt = 4;
 		cpu.pc++;
 	}
 	break;
@@ -399,7 +401,7 @@ static void cpu_handle_opcode(void)
 	case OPC_EI:
 	{
 		cpu.interrupts_enabled = true;
-		cpu.next_instruction += 4;
+		cycle_cnt = 4;
 		cpu.pc++;
 	}
 	break;
@@ -407,7 +409,7 @@ static void cpu_handle_opcode(void)
 	case OPC_DI:
 	{
 		cpu.interrupts_enabled = false;
-		cpu.next_instruction += 4;
+		cycle_cnt = 4;
 		cpu.pc++;
 	}
 	break;
@@ -446,7 +448,7 @@ static void cpu_handle_opcode(void)
 		set_H_flag(false);
 		eval_Z_flag(a_reg);
 		cpu.af.a = a_reg;
-		cpu.next_instruction += 4;
+		cycle_cnt = 4;
 		cpu.pc++;
 	}
 	break;
@@ -456,7 +458,7 @@ static void cpu_handle_opcode(void)
 		set_N_flag(true);
 		set_H_flag(true);
 		cpu.af.a = ~cpu.af.a;
-		cpu.next_instruction += 4;
+		cycle_cnt = 4;
 		cpu.pc++;
 	}
 	break;
@@ -466,7 +468,7 @@ static void cpu_handle_opcode(void)
 		set_N_flag(false);
 		set_H_flag(false);
 		set_C_flag(true);
-		cpu.next_instruction += 4;
+		cycle_cnt = 4;
 		cpu.pc++;
 	}
 	break;
@@ -476,7 +478,7 @@ static void cpu_handle_opcode(void)
 		set_N_flag(false);
 		set_H_flag(false);
 		set_C_flag((0 == (cpu.af.f & FLAG_C)));
-		cpu.next_instruction += 4;
+		cycle_cnt = 4;
 		cpu.pc++;
 	}
 	break;
@@ -489,7 +491,7 @@ static void cpu_handle_opcode(void)
 		set_N_flag(false);
 		set_H_flag(false);
 		set_C_flag(bit7);
-		cpu.next_instruction += 4;
+		cycle_cnt = 4;
 		cpu.pc += 1;
 	}
 	break;
@@ -503,7 +505,7 @@ static void cpu_handle_opcode(void)
 		set_N_flag(false);
 		set_H_flag(false);
 		set_C_flag(bit7);
-		cpu.next_instruction += 4;
+		cycle_cnt = 4;
 		cpu.pc += 1;
 	}
 	break;
@@ -516,7 +518,7 @@ static void cpu_handle_opcode(void)
 		set_N_flag(false);
 		set_H_flag(false);
 		set_C_flag(bit0);
-		cpu.next_instruction += 4;
+		cycle_cnt = 4;
 		cpu.pc += 1;
 	}
 	break;
@@ -530,7 +532,7 @@ static void cpu_handle_opcode(void)
 		set_N_flag(false);
 		set_H_flag(false);
 		set_C_flag(bit0);
-		cpu.next_instruction += 4;
+		cycle_cnt = 4;
 		cpu.pc += 1;
 	}
 	break;
@@ -802,7 +804,7 @@ static void cpu_handle_opcode(void)
 		default: DBG_ERROR(); break;
 		}
 
-		cpu.next_instruction += duration;
+		cycle_cnt = duration;
 		cpu.pc += 2;
 	}
 	break;
@@ -825,11 +827,11 @@ static void cpu_handle_opcode(void)
 			bus_set_memory(--cpu.sp, HIGH_BYTE(next_pc));
 			bus_set_memory(--cpu.sp, LOW_BYTE(next_pc));
 			cpu.pc = ((uint16_t)hi << 8) | lo;
-			cpu.next_instruction += 24;
+			cycle_cnt = 24;
 		}
 		else
 		{
-			cpu.next_instruction += 12;
+			cycle_cnt = 12;
 			cpu.pc += 3;
 		}
 	}
@@ -844,7 +846,7 @@ static void cpu_handle_opcode(void)
 		bus_set_memory(--cpu.sp, HIGH_BYTE(next_pc));
 		bus_set_memory(--cpu.sp, LOW_BYTE(next_pc));
 		cpu.pc = ((uint16_t)hi << 8) | lo;
-		cpu.next_instruction += 24;
+		cycle_cnt = 24;
 	}
 	break;
 
@@ -861,11 +863,11 @@ static void cpu_handle_opcode(void)
 		{
 			int8_t offset = (int8_t) bus_get_memory(cpu.pc + 1);
 			cpu.pc += (offset + 2);
-			cpu.next_instruction += 12;
+			cycle_cnt = 12;
 		}
 		else
 		{
-			cpu.next_instruction += 8;
+			cycle_cnt = 8;
 			cpu.pc += 2;
 		}
 	}
@@ -875,7 +877,7 @@ static void cpu_handle_opcode(void)
 	{
 		int8_t offset = (int8_t) bus_get_memory(cpu.pc + 1);
 		cpu.pc += (offset + 2);
-		cpu.next_instruction += 12;
+		cycle_cnt = 12;
 	}
 	break;
 
@@ -894,11 +896,11 @@ static void cpu_handle_opcode(void)
 			lo = bus_get_memory(cpu.pc + 1);
 			hi = bus_get_memory(cpu.pc + 2);
 			cpu.pc = ((uint16_t)hi << 8) | lo;
-			cpu.next_instruction += 16;
+			cycle_cnt = 16;
 		}
 		else
 		{
-			cpu.next_instruction += 12;
+			cycle_cnt = 12;
 			cpu.pc += 3;
 		}
 	}
@@ -910,14 +912,14 @@ static void cpu_handle_opcode(void)
 		lo = bus_get_memory(cpu.pc + 1);
 		hi = bus_get_memory(cpu.pc + 2);
 		cpu.pc = ((uint16_t)hi << 8) | lo;
-		cpu.next_instruction += 16;
+		cycle_cnt = 16;
 	}
 	break;
 
 	case OPC_JPHL:
 	{
 		cpu.pc = cpu.hl.hl;
-		cpu.next_instruction += 4;
+		cycle_cnt = 4;
 	}
 	break;
 
@@ -936,11 +938,11 @@ static void cpu_handle_opcode(void)
 			lo = bus_get_memory(cpu.sp++);
 			hi = bus_get_memory(cpu.sp++);
 			cpu.pc = ((uint16_t)hi << 8) | lo;
-			cpu.next_instruction += 20;
+			cycle_cnt = 20;
 		}
 		else
 		{
-			cpu.next_instruction += 8;
+			cycle_cnt = 8;
 			cpu.pc += 1;
 		}
 	}
@@ -955,7 +957,7 @@ static void cpu_handle_opcode(void)
 		lo = bus_get_memory(cpu.sp++);
 		hi = bus_get_memory(cpu.sp++);
 		cpu.pc = ((uint16_t)hi << 8) | lo;
-		cpu.next_instruction += 16;
+		cycle_cnt = 16;
 	}
 	break;
 
@@ -970,7 +972,7 @@ static void cpu_handle_opcode(void)
 
 		cpu.pc = offset;
 
-		cpu.next_instruction += 16;
+		cycle_cnt = 16;
 	}
 	break;
 
@@ -989,7 +991,7 @@ static void cpu_handle_opcode(void)
 		eval_H_flag(cpu.af.a, operand, false);
 		eval_C_flag(cpu.af.a, operand, false);
 		cpu.af.a = result;
-		cpu.next_instruction += duration;
+		cycle_cnt = duration;
 		cpu.pc += 1;
 	}
 	break;
@@ -1009,7 +1011,7 @@ static void cpu_handle_opcode(void)
 		eval_H_flag(cpu.af.a, operand, true);
 		eval_C_flag(cpu.af.a, operand, true);
 		cpu.af.a = result;
-		cpu.next_instruction += duration;
+		cycle_cnt = duration;
 		cpu.pc += 1;
 	}
 	break;
@@ -1028,7 +1030,7 @@ static void cpu_handle_opcode(void)
 		set_N_flag(false);
 		set_H_flag(true);
 		set_C_flag(false);
-		cpu.next_instruction += duration;
+		cycle_cnt = duration;
 		cpu.pc += 1;
 	}
 	break;
@@ -1047,7 +1049,7 @@ static void cpu_handle_opcode(void)
 		set_N_flag(false);
 		set_H_flag(false);
 		set_C_flag(false);
-		cpu.next_instruction += duration;
+		cycle_cnt = duration;
 		cpu.pc += 1;
 	}
 	break;
@@ -1060,7 +1062,7 @@ static void cpu_handle_opcode(void)
 		set_N_flag(false);
 		cpu.af.a += operand;
 		eval_Z_flag(cpu.af.a);
-		cpu.next_instruction += 8;
+		cycle_cnt = 8;
 		cpu.pc += 2;
 	}
 	break;
@@ -1073,7 +1075,7 @@ static void cpu_handle_opcode(void)
 		set_N_flag(true);
 		cpu.af.a -= operand;
 		eval_Z_flag(cpu.af.a);
-		cpu.next_instruction += 8;
+		cycle_cnt = 8;
 		cpu.pc += 2;
 	}
 	break;
@@ -1086,7 +1088,7 @@ static void cpu_handle_opcode(void)
 		set_N_flag(false);
 		cpu.af.a = cpu.af.a & operand;
 		eval_Z_flag(cpu.af.a);
-		cpu.next_instruction += 8;
+		cycle_cnt = 8;
 		cpu.pc += 2;
 	}
 	break;
@@ -1099,7 +1101,7 @@ static void cpu_handle_opcode(void)
 		set_N_flag(false);
 		cpu.af.a = cpu.af.a | operand;
 		eval_Z_flag(cpu.af.a);
-		cpu.next_instruction += 8;
+		cycle_cnt = 8;
 		cpu.pc += 2;
 	}
 	break;
@@ -1120,7 +1122,7 @@ static void cpu_handle_opcode(void)
 		eval_H_flag_c(cpu.af.a, operand, false, c);
 		eval_C_flag_c(cpu.af.a, operand, false, c);
 		cpu.af.a = result;
-		cpu.next_instruction += duration;
+		cycle_cnt = duration;
 		cpu.pc += 1;
 	}
 	break;
@@ -1141,7 +1143,7 @@ static void cpu_handle_opcode(void)
 		eval_H_flag_c(cpu.af.a, operand, true, c);
 		eval_C_flag_c(cpu.af.a, operand, true, c);
 		cpu.af.a = result;
-		cpu.next_instruction += duration;
+		cycle_cnt = duration;
 		cpu.pc += 1;
 	}
 	break;
@@ -1160,7 +1162,7 @@ static void cpu_handle_opcode(void)
 		set_N_flag(false);
 		set_H_flag(false);
 		set_C_flag(false);
-		cpu.next_instruction += duration;
+		cycle_cnt = duration;
 		cpu.pc += 1;
 	}
 	break;
@@ -1181,7 +1183,7 @@ static void cpu_handle_opcode(void)
 		eval_C_flag(cpu.af.a, operand, true);
 		eval_H_flag(cpu.af.a, operand, true);
 		eval_C_flag(cpu.af.a, operand, true);
-		cpu.next_instruction += duration;
+		cycle_cnt = duration;
 		cpu.pc += 1;
 	}
 	break;
@@ -1195,7 +1197,7 @@ static void cpu_handle_opcode(void)
 		set_N_flag(false);
 		cpu.af.a += operand + c;
 		eval_Z_flag(cpu.af.a);
-		cpu.next_instruction += 8;
+		cycle_cnt = 8;
 		cpu.pc += 2;
 	}
 	break;
@@ -1209,7 +1211,7 @@ static void cpu_handle_opcode(void)
 		set_N_flag(true);
 		cpu.af.a -= (operand + c);
 		eval_Z_flag(cpu.af.a);
-		cpu.next_instruction += 8;
+		cycle_cnt = 8;
 		cpu.pc += 2;
 	}
 	break;
@@ -1223,7 +1225,7 @@ static void cpu_handle_opcode(void)
 		set_N_flag(false);
 		cpu.af.a = cpu.af.a ^ operand;
 		eval_Z_flag(cpu.af.a);
-		cpu.next_instruction += 8;
+		cycle_cnt = 8;
 		cpu.pc += 2;
 	}
 	break;
@@ -1236,7 +1238,7 @@ static void cpu_handle_opcode(void)
 		eval_H_flag(cpu.af.a, operand, true);
 		set_N_flag(true);
 		eval_Z_flag(cpu.af.a - operand);
-		cpu.next_instruction += 8;
+		cycle_cnt = 8;
 		cpu.pc += 2;
 	}
 	break;
@@ -1257,7 +1259,7 @@ static void cpu_handle_opcode(void)
 		uint8_t *dst = dst_lut[r0];
 		uint8_t duration = ((6 == r0) || (6 == r1)) ? 8 : 4;
 		*dst = src;
-		cpu.next_instruction += duration;
+		cycle_cnt = duration;
 		cpu.pc += 1;
 	}
 	break;
@@ -1271,7 +1273,7 @@ static void cpu_handle_opcode(void)
 		uint8_t r1 = (opcode & 0x07) >> 0;
 		uint8_t src = src_lut[r1];
 		bus_set_memory(cpu.hl.hl, src);
-		cpu.next_instruction += 8;
+		cycle_cnt = 8;
 		cpu.pc += 1;
 	}
 	break;
@@ -1286,7 +1288,7 @@ static void cpu_handle_opcode(void)
 		uint8_t r = (opcode & 0x38) >> 3;
 		uint8_t *dst = dst_lut[r];
 		*dst = data;
-		cpu.next_instruction += 8;
+		cycle_cnt = 8;
 		cpu.pc += 2;
 	}
 	break;
@@ -1296,7 +1298,7 @@ static void cpu_handle_opcode(void)
 		uint8_t data = bus_get_memory(cpu.pc + 1);
 		uint8_t r = (opcode & 0x38) >> 3;
 		bus_set_memory(cpu.hl.hl, data);
-		cpu.next_instruction += 8;
+		cycle_cnt = 8;
 		cpu.pc += 2;
 	}
 	break;
@@ -1312,7 +1314,7 @@ static void cpu_handle_opcode(void)
 		case 3: bus_set_memory(cpu.hl.hl--, cpu.af.a); break;
 		default: DBG_ERROR(); break;
 		}
-		cpu.next_instruction += 8;
+		cycle_cnt = 8;
 		cpu.pc += 1;
 	}
 	break;
@@ -1330,7 +1332,7 @@ static void cpu_handle_opcode(void)
 		default: DBG_ERROR(); break;
 		}
 		cpu.af.a = src;
-		cpu.next_instruction += 8;
+		cycle_cnt = 8;
 		cpu.pc += 1;
 	}
 	break;
@@ -1351,7 +1353,7 @@ static void cpu_handle_opcode(void)
 		case 3: cpu.sp = d16; break;
 		default: DBG_ERROR(); break;
 		}
-		cpu.next_instruction += 12;
+		cycle_cnt = 12;
 		cpu.pc += 3;
 	}
 	break;
@@ -1365,7 +1367,7 @@ static void cpu_handle_opcode(void)
 		addr = ((uint16_t)(hi << 8)) | lo;
 		bus_set_memory(addr + 0, LOW_BYTE(cpu.sp));
 		bus_set_memory(addr + 1, HIGH_BYTE(cpu.sp));
-		cpu.next_instruction += 20;
+		cycle_cnt = 20;
 		cpu.pc += 3;
 	}
 	break;
@@ -1375,7 +1377,7 @@ static void cpu_handle_opcode(void)
 		uint8_t a8 = bus_get_memory(cpu.pc + 1);
 		uint16_t addr = 0xff00 + a8;
 		bus_set_memory(addr, cpu.af.a);
-		cpu.next_instruction += 12;
+		cycle_cnt = 12;
 		cpu.pc += 2;
 	}
 	break;
@@ -1385,7 +1387,7 @@ static void cpu_handle_opcode(void)
 		uint8_t a8 = bus_get_memory(cpu.pc + 1);
 		uint16_t addr = 0xff00 + a8;
 		cpu.af.a = bus_get_memory(addr);
-		cpu.next_instruction += 12;
+		cycle_cnt = 12;
 		cpu.pc += 2;
 	}
 	break;
@@ -1394,7 +1396,7 @@ static void cpu_handle_opcode(void)
 	{
 		uint16_t addr = 0xff00 + cpu.bc.c;
 		bus_set_memory(addr, cpu.af.a);
-		cpu.next_instruction += 8;
+		cycle_cnt = 8;
 		cpu.pc += 1;
 	}
 	break;
@@ -1403,7 +1405,7 @@ static void cpu_handle_opcode(void)
 	{
 		uint16_t addr = 0xff00 + cpu.bc.c;
 		cpu.af.a = bus_get_memory(addr);
-		cpu.next_instruction += 8;
+		cycle_cnt = 8;
 		cpu.pc += 1;
 	}
 	break;
@@ -1415,7 +1417,7 @@ static void cpu_handle_opcode(void)
 		uint16_t src = src_lut[r];
 		bus_set_memory(--cpu.sp, HIGH_BYTE(src));
 		bus_set_memory(--cpu.sp, LOW_BYTE(src));
-		cpu.next_instruction += 16;
+		cycle_cnt = 16;
 		cpu.pc += 1;
 	}
 	break;
@@ -1429,7 +1431,7 @@ static void cpu_handle_opcode(void)
 		lo = bus_get_memory(cpu.sp++) & ((dst == &cpu.af.af) ? 0xf0 : 0xff);
 		hi = bus_get_memory(cpu.sp++);
 		*dst = ((uint16_t)(hi << 8)) | lo;
-		cpu.next_instruction += 12;
+		cycle_cnt = 12;
 		cpu.pc += 1;
 	}
 	break;
@@ -1449,7 +1451,7 @@ static void cpu_handle_opcode(void)
 		set_N_flag(false);
 		(*val)++;
 		eval_Z_flag(*val);
-		cpu.next_instruction += 4;
+		cycle_cnt = 4;
 		cpu.pc += 1;
 	}
 	break;
@@ -1470,7 +1472,7 @@ static void cpu_handle_opcode(void)
 		set_N_flag(false);
 		(*val)++;
 		eval_Z_flag(*val);
-		cpu.next_instruction += 4;
+		cycle_cnt = 4;
 		cpu.pc += 1;
 	}
 	break;
@@ -1482,7 +1484,7 @@ static void cpu_handle_opcode(void)
 		set_N_flag(false);
 		bus_set_memory(cpu.hl.hl, val + 1);
 		eval_Z_flag(val + 1);
-		cpu.next_instruction += 12;
+		cycle_cnt = 12;
 		cpu.pc += 1;
 	}
 	break;
@@ -1498,7 +1500,7 @@ static void cpu_handle_opcode(void)
 		case 3: cpu.sp++; break;
 		default: DBG_ERROR(); break;
 		}
-		cpu.next_instruction += 8;
+		cycle_cnt = 8;
 		cpu.pc += 1;
 	}
 	break;
@@ -1518,7 +1520,7 @@ static void cpu_handle_opcode(void)
 		set_N_flag(true);
 		(*val)--;
 		eval_Z_flag(*val);
-		cpu.next_instruction += 4;
+		cycle_cnt = 4;
 		cpu.pc += 1;
 	}
 	break;
@@ -1539,7 +1541,7 @@ static void cpu_handle_opcode(void)
 		set_N_flag(true);
 		(*val)--;
 		eval_Z_flag(*val);
-		cpu.next_instruction += 4;
+		cycle_cnt = 4;
 		cpu.pc += 1;
 	}
 	break;
@@ -1551,7 +1553,7 @@ static void cpu_handle_opcode(void)
 		set_N_flag(true);
 		bus_set_memory(cpu.hl.hl, val - 1);
 		eval_Z_flag(val - 1);
-		cpu.next_instruction += 12;
+		cycle_cnt = 12;
 		cpu.pc += 1;
 	}
 	break;
@@ -1567,7 +1569,7 @@ static void cpu_handle_opcode(void)
 		case 3: cpu.sp--; break;
 		default: DBG_ERROR(); break;
 		}
-		cpu.next_instruction += 8;
+		cycle_cnt = 8;
 		cpu.pc += 1;
 	}
 	break;
@@ -1581,7 +1583,7 @@ static void cpu_handle_opcode(void)
 		eval_H_flag_16(cpu.hl.hl, operand);
 		eval_C_flag_16(cpu.hl.hl, operand);
 		cpu.hl.hl += operand;
-		cpu.next_instruction += 8;
+		cycle_cnt = 8;
 		cpu.pc += 1;
 	}
 	break;
@@ -1594,7 +1596,7 @@ static void cpu_handle_opcode(void)
 		eval_H_flag(cpu.sp, r8, false);
 		eval_C_flag(cpu.sp, r8, false);
 		cpu.sp += r8;
-		cpu.next_instruction += 16;
+		cycle_cnt = 16;
 		cpu.pc += 2;
 	}
 	break;
@@ -1607,7 +1609,7 @@ static void cpu_handle_opcode(void)
 		eval_H_flag(cpu.sp, r8, false);
 		eval_C_flag(cpu.sp, r8, false);
 		cpu.hl.hl = cpu.sp + r8;
-		cpu.next_instruction += 12;
+		cycle_cnt = 12;
 		cpu.pc += 2;
 	}
 	break;
@@ -1615,7 +1617,7 @@ static void cpu_handle_opcode(void)
 	case OPC_LDSHL:
 	{
 		cpu.sp = cpu.hl.hl;
-		cpu.next_instruction += 8;
+		cycle_cnt = 8;
 		cpu.pc += 1;
 	}
 	break;
@@ -1628,7 +1630,7 @@ static void cpu_handle_opcode(void)
 		hi = bus_get_memory(cpu.pc + 2);
 		a16 = ((uint16_t)(hi << 8)) | lo;
 		bus_set_memory(a16, cpu.af.a);
-		cpu.next_instruction += 16;
+		cycle_cnt = 16;
 		cpu.pc += 3;
 	}
 	break;
@@ -1641,7 +1643,7 @@ static void cpu_handle_opcode(void)
 		hi = bus_get_memory(cpu.pc + 2);
 		a16 = ((uint16_t)(hi << 8)) | lo;
 		cpu.af.a = bus_get_memory(a16);
-		cpu.next_instruction += 16;
+		cycle_cnt = 16;
 		cpu.pc += 3;
 	}
 	break;
@@ -1649,6 +1651,7 @@ static void cpu_handle_opcode(void)
 	default: DBG_ERROR(); break;
 	}
 
+	return cycle_cnt;
 }
 
 static void cpu_print_state(void)
@@ -1673,7 +1676,7 @@ static void cpu_print_state(void)
 	printf("BC: %04x, DE: %04x, HL: %04x\n", cpu.bc.bc, cpu.de.de, cpu.hl.hl);
 }
 
-static bool cpu_handle_interrupt(void)
+static uint8_t cpu_handle_interrupt(void)
 {
 	static enum
 	{
@@ -1681,7 +1684,7 @@ static bool cpu_handle_interrupt(void)
 		isr_state_setup_pc_e,
 	} isr_state = isr_state_idle_e;
 	static uint8_t isr = 0;
-	bool isr_handled = false;
+	uint8_t cycle_cnt = 0;
 
 	switch (isr_state)
 	{
@@ -1723,10 +1726,9 @@ static bool cpu_handle_interrupt(void)
 			/* disable all interrupts */
 			cpu.interrupts_enabled = false;
 			
-			cpu.next_instruction += 3;
+			cycle_cnt = 3;
 
 			isr_state = isr_state_idle_e;
-			isr_handled = true;
 		}
 		break;
 
@@ -1739,14 +1741,13 @@ static bool cpu_handle_interrupt(void)
 			if ((cpu.interrupts_enabled) && (0 != isr))
 			{
 				isr_state = isr_state_setup_pc_e;
-				cpu.next_instruction += 2;
-				isr_handled = true;
+				cycle_cnt = 2;
 			}
 		}
 		break;
 	}
 
-	return isr_handled;
+	return cycle_cnt;
 }
 
 /*---------------------------------------------------------------------*
@@ -1768,17 +1769,26 @@ void gbc_cpu_init(void)
 	return;
 }
 
-void gbc_cpu_tick(void)
+uint32_t gbc_cpu_tick(void)
 {
-	if (cpu.next_instruction == cpu.cycle_cnt++)
+	uint32_t cycle_cnt;
+
+	cycle_cnt = cpu.stall_cnt;
+	cpu.stall_cnt = 0;
+
+	if (0 == cycle_cnt)
 	{
-		if (!cpu_handle_interrupt())
-		{
-			cpu_handle_opcode();
-		}
+		cycle_cnt = cpu_handle_interrupt();
 	}
 
-	return;
+	if (0 == cycle_cnt)
+	{
+		cycle_cnt = cpu_handle_opcode();
+	}
+
+	cpu.cycle_cnt += cycle_cnt;
+
+	return cycle_cnt;
 }
 
 bool gbc_cpu_stopped(void)
@@ -1793,7 +1803,7 @@ uint64_t gbc_cpu_get_cycle_cnt(void)
 
 void gbc_cpu_stall(uint32_t num_ticks)
 {
-	cpu.next_instruction += num_ticks;
+	cpu.stall_cnt = num_ticks;
 }
 
 void gbc_cpu_write_internal_state(void)
