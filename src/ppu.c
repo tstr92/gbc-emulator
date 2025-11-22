@@ -96,7 +96,7 @@
 
 #define COLOR_ID_MSK            (0x03)
 
-#define PALETTE_ADDR_MSK        (0x1F) // Bits 0-5: Address, 
+#define PALETTE_ADDR_MSK        (0x3F) // Bits 0-5: Address, 
 #define PALETTE_AUTO_INC_MSK    (0x80) // Bit 7: auto increment
 #define PALETTE_SPEC_MSK        (PALETTE_ADDR_MSK | PALETTE_AUTO_INC_MSK)
 
@@ -178,7 +178,8 @@ typedef struct
 typedef struct
 {
     uint8_t color_id;       // a value between 0 and 3
-    uint8_t palette;        // on CGB a value between 0 and 7 and on DMG this only applies to objects
+    uint8_t dmg_palette;    // only applies to objects
+    uint8_t cgb_palette;    // a value between 0 and 7
     uint8_t sprite_prio;    // on CGB this is the OAM index for the object and on DMG this doesn’t exist
     uint8_t bg_prio;        // holds the value of the OBJ-to-BG Priority bit
     uint8_t oam_tile_index; // pixel priorization
@@ -225,6 +226,7 @@ typedef struct
     pixel_fetcher_state_t bg_state;
     pixel_fifo_t bg_fifo;
     uint8_t bg_tile_number;
+    uint8_t bg_tile_attr;
     uint8_t bg_tile_data[2];
 
     /* sprite data */
@@ -428,6 +430,8 @@ void ppu_pixel_fetcher_do(void)
                                         ((pixel_fetcher.obj_tile_data[1] & (1<<i)) ? 0x02 : 0x00) ,
                         .sprite_prio    = ppu.scobj.sprites[ppu.scobj.rd].priority,
                         .oam_tile_index = ppu.scobj.sprites[ppu.scobj.rd].tile_idx,
+                        .dmg_palette    = ppu.scobj.sprites[ppu.scobj.rd].dmg_palette,
+                        .cgb_palette    = ppu.scobj.sprites[ppu.scobj.rd].cgb_palette
                     };
                 newPixels.pixels[newPixels.fill_level++] = pixel;
             }
@@ -435,14 +439,16 @@ void ppu_pixel_fetcher_do(void)
         else
         {
             for (int i = (numPixels - 1); i >= 0; i--)
+            {
+                pixel = (pixel_t)
                 {
-                    pixel = (pixel_t)
-                    {
-                        .color_id    = ((pixel_fetcher.obj_tile_data[0] & (1<<i)) ? 0x01 : 0x00) |
-                                        ((pixel_fetcher.obj_tile_data[1] & (1<<i)) ? 0x02 : 0x00) ,
-                        .sprite_prio = ppu.scobj.sprites[ppu.scobj.rd].priority,
-                        .oam_tile_index = ppu.scobj.sprites[ppu.scobj.rd].tile_idx,
-                    };
+                    .color_id    = ((pixel_fetcher.obj_tile_data[0] & (1<<i)) ? 0x01 : 0x00) |
+                                    ((pixel_fetcher.obj_tile_data[1] & (1<<i)) ? 0x02 : 0x00) ,
+                    .sprite_prio = ppu.scobj.sprites[ppu.scobj.rd].priority,
+                    .oam_tile_index = ppu.scobj.sprites[ppu.scobj.rd].tile_idx,
+                    .dmg_palette    = ppu.scobj.sprites[ppu.scobj.rd].dmg_palette,
+                    .cgb_palette    = ppu.scobj.sprites[ppu.scobj.rd].cgb_palette
+                };
                 newPixels.pixels[newPixels.fill_level++] = pixel;
             }
         }
@@ -505,17 +511,18 @@ void ppu_pixel_fetcher_do(void)
     {
     case pfs_get_tile_0_e:
     {
-        uint8_t *p_tile_map;
+        uint8_t *p_tile_map, *p_attr_map;
         bool inWindow;
         uint8_t tileX, tileY;
 
-        p_tile_map = &(vram[ppu.vbk & 0x01].tile_map[0][0]);
+        p_tile_map = &(vram[0].tile_map[0][0]);
+        p_attr_map = &(vram[1].tile_map[0][0]);
         inWindow = (ppu.ly >= ppu.wy) && (pixel_fetcher.x >= (ppu.wx - 7));
 
         if ((!inWindow && (ppu.lcdc & LCDC_BG_TILE_MAP)) ||
             ( inWindow && (ppu.lcdc & LCDC_WINDOW_TILE_MAP)))
         {
-            p_tile_map = &(vram[ppu.vbk & 0x01].tile_map[1][0]);
+            p_tile_map = &(vram[0].tile_map[1][0]);
         }
         
         if (inWindow && (ppu.lcdc & LCDC_WINDOW_EN))
@@ -532,6 +539,7 @@ void ppu_pixel_fetcher_do(void)
         }
 
         pixel_fetcher.bg_tile_number = p_tile_map[tileY * 32 + tileX];
+        pixel_fetcher.bg_tile_attr = p_attr_map[tileY * 32 + tileX];
         pixel_fetcher.tile_hi_lo = 0;
         
         pixel_fetcher.bg_state++;
@@ -541,7 +549,8 @@ void ppu_pixel_fetcher_do(void)
     case pfs_get_tile_data_hi_0_e:
     case pfs_get_tile_data_lo_0_e:
     {
-        uint8_t *p_window_tile_data = &(vram[ppu.vbk & 0x01].tile_data[0]);
+        uint8_t vram_idx = pixel_fetcher.bg_tile_attr & 0x80 ? 1 : 0;
+        uint8_t *p_window_tile_data = &(vram[vram_idx].tile_data[0]);
         uint8_t data;
         if (pixel_fetcher.bg_tile_number & 0x80)
         {
@@ -580,6 +589,8 @@ void ppu_pixel_fetcher_do(void)
                 {
                     .color_id = ((pixel_fetcher.bg_tile_data[0] & (1<<i)) ? 0x01 : 0x00) |
                                 ((pixel_fetcher.bg_tile_data[1] & (1<<i)) ? 0x02 : 0x00) ,
+                    .dmg_palette    = 0,
+                    .cgb_palette    = pixel_fetcher.bg_tile_attr & 0x07,
                 };
                 ppu_pixel_fifo_push(&pixel_fetcher.bg_fifo, pixel);
             }
@@ -698,11 +709,9 @@ void gbc_ppu_tick(void)
                     {
                         uint8_t *cram = &bg_cram[0];
                         pixel_t sprite_pixel;
-                        uint8_t color_index;
-                        uint8_t pallette;
-                        uint8_t id;
+                        uint8_t palette;
 
-                        pallette = ppu.bgp;
+                        palette = ppu.bgp;
 
                         if (ppu_pixel_fifo_pop(&pixel_fetcher.obj_fifo, &sprite_pixel))
                         {
@@ -710,22 +719,23 @@ void gbc_ppu_tick(void)
                                   (sprite_pixel.sprite_prio && (0 != pixel.color_id))))
                             {
                                 pixel = sprite_pixel;
-                                pallette = sprite_pixel.palette ? ppu.obp1 : ppu.obp0;
-                                cram = &bg_cram[0];
+                                palette = sprite_pixel.dmg_palette ? ppu.obp1 : ppu.obp0;
+                                cram = &obj_cram[0];
                             }
                         }
 
-                        id = (pixel.color_id & 0x03) * 2; // 0, 2, 4, 6
-                        color_index = (pallette & (COLOR_ID_MSK << id)) >> id;
-
                         if (bus_DMG_mode())
                         {
+                            uint8_t id = (pixel.color_id & 0x03) * 2; // 0, 2, 4, 6
+                            uint8_t color_index = (palette & (COLOR_ID_MSK << id)) >> id;
                             screen[ppu.ly * 160 + ppu_state.lx].raw = dmg_palette[color_index];
                         }
                         else
                         {
-                            uint16_t color = ((uint16_t) cram[(pixel.palette << 3) + (color_index << 1) + 0]) << 0 |
-                                            ((uint16_t) cram[(pixel.palette << 3) + (color_index << 1) + 1]) << 8;
+                            // uint16_t color = ((uint16_t) cram[(pixel.palette << 3) + (color_index << 1) + 0]) << 0 |
+                            //                 ((uint16_t) cram[(pixel.palette << 3) + (color_index << 1) + 1]) << 8;
+                            uint16_t color = ((uint16_t) cram[(pixel.cgb_palette << 3) + (pixel.color_id << 1) + 0]) << 0 |
+                                            ((uint16_t) cram[(pixel.cgb_palette << 3) + (pixel.color_id << 1) + 1]) << 8;
                             
                             screen[ppu.ly * 160 + ppu_state.lx].R = ((color & 0x001f) >>  0) << 3;
                             screen[ppu.ly * 160 + ppu_state.lx].G = ((color & 0x03e0) >>  5) << 3;
