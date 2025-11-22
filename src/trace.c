@@ -55,15 +55,6 @@ static uint8_t trace_data[256];
 /*---------------------------------------------------------------------*
  *  private functions                                                  *
  *---------------------------------------------------------------------*/
-static size_t strcpy_count(char *dest, const char *src) {
-    size_t n = 0;
-    for (; '\0' != src[n]; n++)
-    {
-        dest[n] = src[n];
-    }
-    return n; // +1 for the null terminator
-}
-
 static void save_trace(void)
 {
     FILE *f = fopen("trace.txt", "w");
@@ -74,7 +65,7 @@ static void save_trace(void)
             uint8_t opcode = trace_data[(uint8_t)(index + i)];
             if (0xCB == opcode)
             {
-                uint8_t opcode2 = trace_data[(uint8_t)(index +++ i)];
+                uint8_t opcode2 = trace_data[(uint8_t)(index++ + i)];
                 fputs(mnemonics2[opcode2], f);
             }
             else

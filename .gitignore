@@ -10,3 +10,4 @@ assets
 *.log
 .nogit
 savegame
+trace.txt
