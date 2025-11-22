@@ -35,7 +35,8 @@ SRC = \
 		timer.c \
 		serial.c \
 		apu.c \
-		ppu.c
+		ppu.c \
+		trace.c
 
 OBJS = $(addprefix $(OUTDIR)/,$(SRC:.c=.o))
 
@@ -82,7 +83,7 @@ $(OUTDIR)/$(TARGET).exe: $(OBJS)
 # generate .lss file from .exe file
 $(OUTDIR)/%.lss: $(OUTDIR)/%.exe
 	@echo "generating $@ ..."
-	$(OBJDUMP) -D -h -l -S $< > $@
+	$(OBJDUMP) -d -h -l $< > $@
 
 # -h -l -S
 

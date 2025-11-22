@@ -8,3 +8,5 @@ gbc_emulator.code-workspace
 assets
 *.bin
 *.log
+.nogit
+savegame

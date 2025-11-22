@@ -1,13 +1,13 @@
 
 /*---------------------------------------------------------------------*
  *                                                                     *
- *                         GBC Emulator                                *
+ *                         GBC Timer                                   *
  *                                                                     *
  *                                                                     *
  *       project: Gameboy Color Emulator                               *
- *   module name: emulator.c                                           *
+ *   module name: trace.c                                              *
  *        author: tstr92                                               *
- *          date: 2025-05-10                                           *
+ *          date: 2025-10-03                                           *
  *                                                                     *
  *---------------------------------------------------------------------*/
 
@@ -15,20 +15,19 @@
 /*---------------------------------------------------------------------*
  *  include files                                                      *
  *---------------------------------------------------------------------*/
+#include <stdlib.h>
 #include <stdio.h>
+#include <stdbool.h>
 
-#include "emulator.h"
-#include "bus.h"
-#include "cpu.h"
-#include "timer.h"
-#include "apu.h"
-#include "ppu.h"
-#include "debug.h"
 #include "trace.h"
 
 /*---------------------------------------------------------------------*
  *  local definitions                                                  *
  *---------------------------------------------------------------------*/
+/* we use a uint8_t to index into trace_data. overflow handling is free
+ * but keep this in mind when changing buffer size
+ */
+#define TRACE_BUFFER_LEN 256
 
 /*---------------------------------------------------------------------*
  *  external declarations                                              *
@@ -41,6 +40,13 @@
 /*---------------------------------------------------------------------*
  *  private data                                                       *
  *---------------------------------------------------------------------*/
+/* -> static const char *mnemonics[] = {...};
+ * -> static const char *mnemonics2[] = {...};
+ */
+#include "mnemonics.inc"
+
+static uint8_t index = 0;
+static uint8_t trace_data[256];
 
 /*---------------------------------------------------------------------*
  *  private function declarations                                      *
@@ -49,94 +55,53 @@
 /*---------------------------------------------------------------------*
  *  private functions                                                  *
  *---------------------------------------------------------------------*/
+static size_t strcpy_count(char *dest, const char *src) {
+    size_t n = 0;
+    for (; '\0' != src[n]; n++)
+    {
+        dest[n] = src[n];
+    }
+    return n; // +1 for the null terminator
+}
+
+static void save_trace(void)
+{
+    FILE *f = fopen("trace.txt", "w");
+    if (f)
+    {
+        for (int i = 0; i < TRACE_BUFFER_LEN; i++)
+        {
+            uint8_t opcode = trace_data[(uint8_t)(index + i)];
+            if (0xCB == opcode)
+            {
+                uint8_t opcode2 = trace_data[(uint8_t)(index +++ i)];
+                fputs(mnemonics2[opcode2], f);
+            }
+            else
+            {
+                fputs(mnemonics[opcode], f);
+            }
+        }
+        fclose(f);
+    }
+}
 
 /*---------------------------------------------------------------------*
  *  public functions                                                   *
  *---------------------------------------------------------------------*/
-int emulator_load_game(char *fileName)
+void trace_init(void)
 {
-	if (!bus_init_memory(fileName))
-	{
-		printf("Error: Could not open file '%s'.\n", fileName);
-		return 1;
-	}
-
-	gbc_cpu_init();
-	bus_init();
-	gbc_apu_init();
-	trace_init();
-
-	return 0;
+    atexit(save_trace);
 }
 
-void emulator_run(void)
+void trace(uint8_t opcode, uint8_t opcode2)
 {
-	uint64_t start, end;
-	int i;
-
-	start = platform_getSysTick_ms();
-
-	for (;;)
-	{
-		bus_tick();
-		if (gbc_cpu_stopped())
-		{
-			end = platform_getSysTick_ms();
-			uint32_t duration = (uint32_t) (end - start);
-			uint32_t ingame_frames = gbc_cpu_get_cycle_cnt() / 140448;
-			uint32_t realworld_frames = (duration * 60) / 1000;
-			uint64_t cyccnt_8mhz = 8000 * duration;
-			printf("\n\n");
-			printf("Cycle-Count: %llu, elapsed time: %lums, Cycle-Count(8MHz): %llu, emulation_ccnt/real_ccnt=%llu\n", gbc_cpu_get_cycle_cnt(), duration, cyccnt_8mhz, 0==cyccnt_8mhz?0:gbc_cpu_get_cycle_cnt()/cyccnt_8mhz);
-			printf("emulation_frames: %lu, real_frames: %lu, emulation_frames/real_frames=%lu\n", ingame_frames, realworld_frames, 0==realworld_frames?0:ingame_frames/realworld_frames);
-			printf("\nCPU Stopped!\n");
-			break;
-		}
-	}
+    trace_data[index++] = opcode;
+    if (opcode == 0xCB)
+    {
+        trace_data[index++] = opcode2;
+    }
 }
-
-__attribute__((weak)) uint8_t emulator_get_speed(void)
-{
-    return 10;
-}
-
-void emulator_write_save_file(void)
-{
-	gbc_cpu_write_internal_state();
-	gbc_bus_write_internal_state();
-	gbc_ppu_write_internal_state();
-	gbc_apu_write_internal_state();
-	gbc_tim_write_internal_state();
-}
-
-int emulator_load_save_file(void)
-{
-	int ret = 0;
-
-	if (0 == ret)
-	{
-		gbc_cpu_set_internal_state();
-	}
-	if (0 == ret)
-	{
-		gbc_bus_set_internal_state();
-	}
-	if (0 == ret)
-	{
-		gbc_ppu_set_internal_state();
-	}
-	if (0 == ret)
-	{
-		gbc_apu_set_internal_state();
-	}
-	if (0 == ret)
-	{
-		gbc_tim_set_internal_state();
-	}
-
-	return ret;
-}
-
 /*---------------------------------------------------------------------*
  *  eof                                                                *
  *---------------------------------------------------------------------*/

@@ -23,6 +23,7 @@
 #include "bus.h"
 #include "timer.h"
 #include "emulator.h"
+#include "trace.h"
 
 /*---------------------------------------------------------------------*
  *  local definitions                                                  *
@@ -103,6 +104,7 @@ typedef struct
 
 	bool interrupts_enabled;
 	bool stopped;
+	bool halted;
 
 	uint16_t last_addr;
 	uint8_t last_opcode;
@@ -357,7 +359,7 @@ static void set_C_flag(bool c)
 static uint8_t cpu_handle_opcode(void)
 {
 	uint8_t cycle_cnt = 0;
-	uint8_t opcode;
+	uint8_t opcode, opcode2 = 0;
 	opcode_t opcode_type;
 
 	opcode = bus_get_memory(cpu.pc);
@@ -395,6 +397,7 @@ static uint8_t cpu_handle_opcode(void)
 	{
 		cycle_cnt = 4;
 		cpu.pc++;
+		cpu.halted = true;
 	}
 	break;
 	
@@ -539,15 +542,16 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_CB:
 	{
-		uint8_t opcode2 = bus_get_memory(cpu.pc + 1);;
+		opcode2 = bus_get_memory(cpu.pc + 1);;
 		opcode2_t opcode_type2 = opcode_types2[opcode2];
 		uint8_t *target_lut[8] = {
 			&cpu.bc.b, &cpu.bc.c, &cpu.de.d, &cpu.de.e,
 			&cpu.hl.h, &cpu.hl.l, NULL     , &cpu.af.a
 		};
-		uint8_t i = opcode2 & 0x07;
-		uint8_t *target_p = target_lut[i];
-		uint8_t duration = (i == 6) ? 16 : 8;
+		uint8_t *target_p = target_lut[opcode2 & 0x07];
+		uint8_t duration = (0x46 == (opcode2 & 0xc7)) ? 12 :
+						   (0x06 == (opcode2 & 0x07)) ? 16 :
+						   8;
 
 		switch (opcode_type2)
 		{
@@ -1298,7 +1302,7 @@ static uint8_t cpu_handle_opcode(void)
 		uint8_t data = bus_get_memory(cpu.pc + 1);
 		uint8_t r = (opcode & 0x38) >> 3;
 		bus_set_memory(cpu.hl.hl, data);
-		cycle_cnt = 8;
+		cycle_cnt = 12;
 		cpu.pc += 2;
 	}
 	break;
@@ -1651,6 +1655,8 @@ static uint8_t cpu_handle_opcode(void)
 	default: DBG_ERROR(); break;
 	}
 
+	trace(opcode, opcode2);
+
 	return cycle_cnt;
 }
 
@@ -1738,10 +1744,14 @@ static uint8_t cpu_handle_interrupt(void)
 			uint8_t IE = bus_get_memory(INTERRUPT_ENABLE_ADDRESS);
 			uint8_t IF = bus_get_memory(INTERRUPT_FLAGS_ADDRESS);
 			isr = (IE & IF);
-			if ((cpu.interrupts_enabled) && (0 != isr))
+			if (0 != isr)
 			{
-				isr_state = isr_state_setup_pc_e;
-				cycle_cnt = 2;
+				cpu.halted = false;
+				if (cpu.interrupts_enabled)
+				{
+					isr_state = isr_state_setup_pc_e;
+					cycle_cnt = 2;
+				}
 			}
 		}
 		break;
@@ -1783,7 +1793,14 @@ uint32_t gbc_cpu_tick(void)
 
 	if (0 == cycle_cnt)
 	{
-		cycle_cnt = cpu_handle_opcode();
+		if (!cpu.halted)
+		{
+			cycle_cnt = cpu_handle_opcode();
+		}
+		else
+		{
+			cycle_cnt = 1;
+		}
 	}
 
 	cpu.cycle_cnt += cycle_cnt;
