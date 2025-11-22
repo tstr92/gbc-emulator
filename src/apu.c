@@ -646,8 +646,6 @@ uint8_t gbc_apu_get_memory(uint16_t addr)
 
     ret = 0;
 
-    // printf("read %04x\n", addr);
-
     switch (addr)
     {
         case APU_ADDR_CH1_SWEEP:
