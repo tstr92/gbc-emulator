@@ -32,7 +32,7 @@
 #define APU_ADDR_CH1_VOL_ENVELOPE     0xFF12
 #define APU_ADDR_CH1_PERIOD_LOW       0xFF13
 #define APU_ADDR_CH1_PERIOD_HIGH_CTRL 0xFF14
-#define APU_ADDR_CH2_LENGTH_TIM_DC    0xFF15
+#define APU_ADDR_CH2_LENGTH_TIM_DC    0xFF16
 #define APU_ADDR_CH2_VOL_ENVELOPE     0xFF17
 #define APU_ADDR_CH2_PERIOD_LOW       0xFF18
 #define APU_ADDR_CH2_PERIOD_HIGH_CTRL 0xFF19
@@ -122,7 +122,7 @@ typedef struct
     uint8_t ch1_vol_envelope;       // 0xFF12
     uint8_t ch1_period_low;         // 0xFF13
     uint8_t ch1_period_high_ctrl;   // 0xFF14
-    uint8_t ch2_length_tim_dc;      // 0xFF15
+    uint8_t ch2_length_tim_dc;      // 0xFF16
     uint8_t ch2_vol_envelope;       // 0xFF17
     uint8_t ch2_period_low;         // 0xFF18
     uint8_t ch2_period_high_ctrl;   // 0xFF19
@@ -138,7 +138,6 @@ typedef struct
     uint8_t master_vol_vin_pan;     // 0xFF24
     uint8_t sound_panning;          // 0xFF25
     uint8_t audio_master_control;   // 0xFF26
-    uint8_t wave_ram[0x10];         // 0xFF30 - 0xFF3F
 
     struct
     {
@@ -268,6 +267,8 @@ static frequency_debug_t ch12_period_1M;   // 4
 static frequency_debug_t ch12_sweep_128;   // 32768
 static frequency_debug_t ch12_env_64 ;     // 65536
 static frequency_debug_t ch12_len_256;     // 16384
+
+static uint8_t wave_ram[0x10];         // 0xFF30 - 0xFF3F
 
 /*---------------------------------------------------------------------*
  *  private function declarations                                      *
@@ -428,11 +429,11 @@ static void apu_ch3_tick(bool div_apu_512Hz)
                 ch3.period_counter = ch3.period;
                 if (0 == ch3.wave_ram_nibble_select)
                 {
-                    ch3.output_sample = (apu.wave_ram[ch3.wave_ram_byte_select] >> 4) & 0x0F;
+                    ch3.output_sample = (wave_ram[ch3.wave_ram_byte_select] >> 4) & 0x0F;
                 }
                 else
                 {
-                    ch3.output_sample = (apu.wave_ram[ch3.wave_ram_byte_select] >> 0) & 0x0F;
+                    ch3.output_sample = (wave_ram[ch3.wave_ram_byte_select] >> 0) & 0x0F;
                 }
                 ch3.wave_sample_select++;
             }
@@ -651,7 +652,7 @@ uint8_t gbc_apu_get_memory(uint16_t addr)
     {
         case APU_ADDR_CH1_SWEEP:
         {
-            ret = apu.ch1_sweep;
+            ret = apu.ch1_sweep | 0x80;
         }
         break;
 
@@ -669,13 +670,13 @@ uint8_t gbc_apu_get_memory(uint16_t addr)
 
         case APU_ADDR_CH3_DAC_EN:
         {
-            ret = apu.ch3_dac_en;
+            ret = apu.ch3_dac_en | 0x7f;
         }
         break;
 
         case APU_ADDR_CH3_OUT_LVL:
         {
-            ret = apu.ch3_out_lvl;
+            ret = apu.ch3_out_lvl | 0x9f;
         }
         break;
 
@@ -705,28 +706,59 @@ uint8_t gbc_apu_get_memory(uint16_t addr)
 
         case APU_ADDR_AUDIO_MASTER_CONTROL:
         {
-            ret = apu.audio_master_control;
+            ret = (apu.audio_master_control & 0x8F) | 0x70;
         }
         break;
 
         case 0xFF30 ... 0xFF3F:   // Audio Wave RAM
         {
-            ret = ch3.running ? apu.wave_ram[ch3.wave_ram_byte_select] : apu.wave_ram[addr & 0xF];
+            ret = ch3.running ? wave_ram[ch3.wave_ram_byte_select] : wave_ram[addr & 0xF];
         }
         break;
 
         case APU_ADDR_CH1_LENGTH_TIM_DC:
-        case APU_ADDR_CH1_PERIOD_LOW:
+        {
+            ret = apu.ch1_length_tim_dc | 0x3f;
+        }
+        break;
+
         case APU_ADDR_CH1_PERIOD_HIGH_CTRL:
+        {
+            ret = (apu.ch1_period_high_ctrl & 0x7f) | 0xBF;
+        }
+        break;
+
         case APU_ADDR_CH2_LENGTH_TIM_DC:
-        case APU_ADDR_CH2_PERIOD_LOW:
+        {
+            ret = apu.ch2_length_tim_dc | 0x3f;
+        }
+        break;
+
         case APU_ADDR_CH2_PERIOD_HIGH_CTRL:
+        {
+            ret = (apu.ch2_period_high_ctrl & 0x7f) | 0xBF;
+        }
+        break;
+        
+        case APU_ADDR_CH3_PERIOD_HIGH_CTRL:
+        {
+            ret = (apu.ch3_period_high_ctrl & 0x7F) | 0xBF;
+        }
+        break;
+
+        case APU_ADDR_CH4_CTRL:
+        {
+            ret = (apu.ch4_ctrl & 0x7F) | 0xBF;
+        }
+        break;
+
+
+        case APU_ADDR_CH1_PERIOD_LOW:
+        case APU_ADDR_CH2_PERIOD_LOW:
         case APU_ADDR_CH3_LENGTH_TIM:
         case APU_ADDR_CH3_PERIOD_LOW:
-        case APU_ADDR_CH3_PERIOD_HIGH_CTRL:
         case APU_ADDR_CH4_LENGTH_TIM:
-        case APU_ADDR_CH4_CTRL:
-        case 0xFF16: case 0xFF1F: case 0xFF27 ... 0xFF2F:
+        case 0xFF15: case 0xFF1F: case 0xFF27 ... 0xFF2F:
         {
             /* write-only or reserved */
             // putc('a', stdout);
@@ -777,6 +809,7 @@ void gbc_apu_set_memory(uint16_t addr, uint8_t val)
                 case CH12_DC_75_PERCENT  : ch1.dc_pattern = DC_PATTERN_75_0; break;
                 default: break;
             }
+ch1.length_timer = (val & CH_LENGTH_TIMER_MSK);
         }
         break;
 
@@ -1039,6 +1072,7 @@ void gbc_apu_set_memory(uint16_t addr, uint8_t val)
 
         case APU_ADDR_CH4_CTRL:
         {
+                apu.ch4_ctrl = val;
             ch4.length_enable = (0 != (val & CH_LENGTH_EN));
             if (val & CH_TRIGGER)
             {
@@ -1095,12 +1129,12 @@ void gbc_apu_set_memory(uint16_t addr, uint8_t val)
         {
             if (!ch3.running)
             {
-                apu.wave_ram[addr & 0xF] = val;
+                    wave_ram[addr & 0xF] = val;
             }
         }
         break;
 
-        case 0xFF16:
+            case 0xFF15:
         case 0xFF1F:
         case 0xFF27 ... 0xFF2F:
         case APU_ADDR_PCM12:
