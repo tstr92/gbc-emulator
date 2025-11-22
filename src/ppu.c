@@ -628,6 +628,7 @@ void gbc_ppu_init(void)
 void gbc_ppu_tick(void)
 {
     uint8_t *window_tile_map;
+    ppu_mode_t current_ppu_mode = ppu_state.mode;
 
     if (ppu.lcdc & LCDC_LCD_PPU_EN)
     {
@@ -771,7 +772,14 @@ void gbc_ppu_tick(void)
 
     if (ppu.ly == ppu.lyc)
     {
-        ppu.stat |= STAT_LYC_EQ_LY;
+        if (0 == (ppu.stat & STAT_LYC_EQ_LY))
+        {
+            ppu.stat |= STAT_LYC_EQ_LY;
+            if (ppu.stat & STAT_LYC_INT_SEL)
+            {
+                BUS_SET_IRQ(IRQ_LCD);
+            }
+        }
     }
     else
     {
@@ -780,15 +788,6 @@ void gbc_ppu_tick(void)
 
     ppu.stat &= ~STAT_PPU_MODE;
     ppu.stat |= ppu_state.mode;
-
-    /* eval STAT IRQ state */
-    if (((ppu.stat & STAT_MODE0_INT_SEL) && (mode0_hblank   == ppu_state.mode)) ||
-        ((ppu.stat & STAT_MODE1_INT_SEL) && (mode1_vblank   == ppu_state.mode)) ||
-        ((ppu.stat & STAT_MODE2_INT_SEL) && (mode2_oam_scan == ppu_state.mode)) ||
-        ((ppu.stat & STAT_LYC_INT_SEL  ) && (ppu.stat & STAT_LYC_EQ_LY)))
-    {
-        BUS_SET_IRQ(IRQ_LCD);
-    }
 
     if ((0 == ppu_state.line_dot_cnt) && (144 == ppu.ly))
     {
@@ -824,6 +823,17 @@ void gbc_ppu_tick(void)
             ppu.scobj.wr = 0;
             ppu.scobj.rd = 0;
             ppu_state.mode = mode2_oam_scan;
+        }
+    }
+
+    if (ppu_state.mode != current_ppu_mode)
+    {
+        /* eval STAT IRQ state */
+        if (((ppu.stat & STAT_MODE0_INT_SEL) && (mode0_hblank   == ppu_state.mode)) ||
+            ((ppu.stat & STAT_MODE1_INT_SEL) && (mode1_vblank   == ppu_state.mode)) ||
+            ((ppu.stat & STAT_MODE2_INT_SEL) && (mode2_oam_scan == ppu_state.mode)))
+        {
+            BUS_SET_IRQ(IRQ_LCD);
         }
     }
 
