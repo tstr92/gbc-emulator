@@ -510,20 +510,22 @@ void ppu_pixel_fetcher_do(void)
     case pfs_get_tile_0_e:
     {
         uint8_t *p_tile_map, *p_attr_map;
-        bool inWindow;
+        bool inWindow, windowEn;
         uint8_t tileX, tileY;
 
         p_tile_map = &(vram[0].tile_map[0][0]);
         p_attr_map = &(vram[1].tile_map[0][0]);
         inWindow = (ppu.ly >= ppu.wy) && (pixel_fetcher.x >= (ppu.wx - 7));
+        windowEn = (ppu.lcdc & LCDC_WINDOW_EN);
 
-        if ((!inWindow && (ppu.lcdc & LCDC_BG_TILE_MAP)) ||
-            ( inWindow && (ppu.lcdc & LCDC_WINDOW_TILE_MAP)))
+        if ((!(inWindow && windowEn) && (ppu.lcdc & LCDC_BG_TILE_MAP)) ||
+            ( windowEn && inWindow && (ppu.lcdc & LCDC_WINDOW_TILE_MAP)))
         {
             p_tile_map = &(vram[0].tile_map[1][0]);
+            p_attr_map = &(vram[1].tile_map[1][0]);
         }
         
-        if (inWindow && (ppu.lcdc & LCDC_WINDOW_EN))
+        if (inWindow && windowEn)
         {
             tileX = ((pixel_fetcher.x - (ppu.wx - 7)) / 8);
             tileY = ((      ppu.ly -  ppu.wy     ) / 8);
