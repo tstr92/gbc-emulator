@@ -22,6 +22,8 @@
 #include "debug.h"
 #include "emulator.h"
 
+#define DEBUG_SHOW_WINDOW 1
+
 #define ABS_DIFF(_a, _b) ((_a > _b) ? (_a - _b) : (_b - _a))
 
 /*---------------------------------------------------------------------*
@@ -737,6 +739,14 @@ void gbc_ppu_tick(void)
                             screen[ppu.ly * 160 + ppu_state.lx].R = ((color & 0x001f) >>  0) << 3;
                             screen[ppu.ly * 160 + ppu_state.lx].G = ((color & 0x03e0) >>  5) << 3;
                             screen[ppu.ly * 160 + ppu_state.lx].B = ((color & 0x7c00) >> 10) << 3;
+                            
+#if (0 != DEBUG_SHOW_WINDOW)
+                            /* draw green frame around window */
+                            if ((ppu.lcdc & LCDC_WINDOW_EN) && (((ppu.wx - 7) == ppu_state.lx) || (((ppu.wx - 7) <= ppu_state.lx) && (ppu.ly == ppu.wy))))
+                            {
+                                screen[ppu.ly * 160 + ppu_state.lx] = (screen_pixel_t) { .G = 0xff };
+                            }
+#endif
                         }
 
                         ppu_state.lx++;
