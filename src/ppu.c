@@ -354,10 +354,6 @@ void ppu_pixel_fetcher_do(void)
                 pixel_fetcher.bg_state = pfs_suspended_e;
                 pixel_fetcher.obj_state = pfs_get_tile_0_e;
             }
-            else
-            {
-                pixel_fetcher.obj_state = pfs_suspended_e;
-            }
         }
     }
 
