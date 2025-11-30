@@ -541,6 +541,14 @@ void ppu_pixel_fetcher_do(void)
         pixel_fetcher.bg_tile_number = p_tile_map[tileY * 32 + tileX];
         pixel_fetcher.bg_tile_attr = p_attr_map[tileY * 32 + tileX];
         pixel_fetcher.tile_hi_lo = 0;
+
+        if (0 != (pixel_fetcher.bg_tile_attr & 0x60))
+        {
+            printf("bg tile flip: %s\n", 
+                (0x60 == (pixel_fetcher.bg_tile_attr & 0x60)) ? "x + y" :
+                (0x20 == (pixel_fetcher.bg_tile_attr & 0x60)) ? "x" : "y"
+            );
+        }
         
         pixel_fetcher.bg_state++;
     }
@@ -549,7 +557,7 @@ void ppu_pixel_fetcher_do(void)
     case pfs_get_tile_data_hi_0_e:
     case pfs_get_tile_data_lo_0_e:
     {
-        uint8_t vram_idx = pixel_fetcher.bg_tile_attr & 0x80 ? 1 : 0;
+        uint8_t vram_idx = (0 != (pixel_fetcher.bg_tile_attr & 0x08)) ? 1 : 0;
         uint8_t *p_window_tile_data = &(vram[vram_idx].tile_data[0]);
         uint8_t data;
         if (pixel_fetcher.bg_tile_number & 0x80)
@@ -591,6 +599,7 @@ void ppu_pixel_fetcher_do(void)
                                 ((pixel_fetcher.bg_tile_data[1] & (1<<i)) ? 0x02 : 0x00) ,
                     .dmg_palette    = 0,
                     .cgb_palette    = pixel_fetcher.bg_tile_attr & 0x07,
+                    .bg_prio        = (0 != (pixel_fetcher.bg_tile_attr & 0x80))
                 };
                 ppu_pixel_fifo_push(&pixel_fetcher.bg_fifo, pixel);
             }
