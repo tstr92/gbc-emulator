@@ -742,8 +742,6 @@ void gbc_ppu_tick(void)
                         }
                         else
                         {
-                            // uint16_t color = ((uint16_t) cram[(pixel.palette << 3) + (color_index << 1) + 0]) << 0 |
-                            //                 ((uint16_t) cram[(pixel.palette << 3) + (color_index << 1) + 1]) << 8;
                             uint16_t color = ((uint16_t) cram[(pixel.cgb_palette << 3) + (pixel.color_id << 1) + 0]) << 0 |
                                             ((uint16_t) cram[(pixel.cgb_palette << 3) + (pixel.color_id << 1) + 1]) << 8;
                             
