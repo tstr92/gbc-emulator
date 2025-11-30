@@ -36,7 +36,8 @@ SRC = \
 		serial.c \
 		apu.c \
 		ppu.c \
-		trace.c
+		trace.c \
+		ppu_debug.c
 
 OBJS = $(addprefix $(OUTDIR)/,$(SRC:.c=.o))
 

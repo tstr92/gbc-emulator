@@ -22,6 +22,7 @@
 #include <math.h>
 #include <time.h>
 #include "emulator.h"
+#include "ppu_debug.h"
 
 /*---------------------------------------------------------------------*
  *  local definitions                                                  *
@@ -49,6 +50,7 @@
 
 typedef struct
 {
+    /* emulator */
     SDL_Window *window;
     SDL_Renderer *renderer;
     Uint32 *screen_buffer;
@@ -665,6 +667,8 @@ int main(int argc, char* argv[])
         return 1;
     }
 
+    ppu_debug_init();
+
     gEmulatorJoypadMutex = SDL_CreateMutex();
     gEmulatorDataMutex = SDL_CreateMutex();
     gEmulatorDataCond = SDL_CreateCond();
@@ -689,6 +693,7 @@ int main(int argc, char* argv[])
             {
                 render(&sdl_rsc);
                 fps(&sdl_rsc);
+                ppu_debug_render();
             }
         }
         else if ((e.type == SDL_KEYDOWN) && (SDLK_ESCAPE == e.key.keysym.sym))
@@ -731,6 +736,7 @@ int main(int argc, char* argv[])
     }
 
     // Cleanup
+    ppu_debug_destroy();
     destroy_sdl_rsc(&sdl_rsc);
     SDL_DestroyCond(gEmulatorDataCond);
     SDL_DestroyMutex(gEmulatorDataMutex);

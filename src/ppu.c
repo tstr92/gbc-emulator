@@ -1134,6 +1134,14 @@ void emulator_get_video_data(uint32_t *data)
     }
 }
 
+void emulator_debug_get_ppu_data(uint8_t *p_bg_cram, uint8_t *p_obj_cram, uint8_t *p_vram_0, uint8_t *p_vram_1)
+{
+    memcpy(p_bg_cram, bg_cram, sizeof(bg_cram));
+    memcpy(p_obj_cram, obj_cram, sizeof(obj_cram));
+    memcpy(p_vram_0, &vram[0], sizeof(vram[0]));
+    memcpy(p_vram_1, &vram[1], sizeof(vram[1]));
+}
+
 void gbc_ppu_write_internal_state(void)
 {
     emulator_cb_write_to_save_file((uint8_t*) &ppu          , sizeof(ppu          ), "ppu"          );
