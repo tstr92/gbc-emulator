@@ -391,7 +391,7 @@ void ppu_pixel_fetcher_do(void)
     case pfs_get_tile_data_hi_0_e:
     case pfs_get_tile_data_lo_0_e:
     {
-        uint8_t *p_window_tile_data = &(vram[ppu.vbk & 0x01].tile_data[0]);
+        uint8_t *p_window_tile_data = &(vram[ppu.scobj.sprites[ppu.scobj.rd].bank & 0x01].tile_data[0]);
         uint8_t data;
         if (ppu.scobj.sprites[ppu.scobj.rd].y_flip)
         {
@@ -636,15 +636,7 @@ void gbc_ppu_init(void)
 
 void gbc_ppu_tick(void)
 {
-    uint8_t *window_tile_map;
     ppu_mode_t current_ppu_mode = ppu_state.mode;
-
-    if (ppu.lcdc & LCDC_LCD_PPU_EN)
-    {
-        window_tile_map = (ppu.lcdc & LCDC_WINDOW_TILE_MAP)      ?
-                          &(vram[ppu.vbk & 0x01].tile_map[1][0]) :
-                          &(vram[ppu.vbk & 0x01].tile_map[0][0]) ;
-    }
 
     switch (ppu_state.mode)
     {
