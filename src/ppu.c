@@ -290,6 +290,9 @@ static screen_pixel_t screen0[144][160];
 static screen_pixel_t screen1[144][160];
 static screen_pixel_t *screen = (screen_pixel_t *) &screen0[0][0];
 
+volatile bool ppu_bp = false;
+volatile uint8_t breakx, breaky;
+
 uint32_t dmg_palette[4] =
 {
     0xFFFFFFFF, 0xAAAAAAAA, 0x55555555, 0x00000000
@@ -541,6 +544,21 @@ void ppu_pixel_fetcher_do(void)
         pixel_fetcher.bg_tile_number = p_tile_map[tileY * 32 + tileX];
         pixel_fetcher.bg_tile_attr = p_attr_map[tileY * 32 + tileX];
         pixel_fetcher.tile_hi_lo = 0;
+
+        #define in_range(_target, _val, _tolerance) ((_val > (_target  - _tolerance)) && (_val > (_target  + _tolerance)))
+
+        if (ppu_bp && in_range(breakx, pixel_fetcher.x, 8) && breaky == ppu.ly)
+        {
+            volatile uint8_t dummy;
+            dummy = tileX;
+            (void) *(volatile uint8_t *)&dummy;
+            dummy = tileY;
+            (void) *(volatile uint8_t *)&dummy;
+            dummy = tileX;
+            (void) *(volatile uint8_t *)&dummy;
+            dummy = tileY;
+            (void) *(volatile uint8_t *)&dummy;
+        }
 
         if (0 != (pixel_fetcher.bg_tile_attr & 0x60))
         {
