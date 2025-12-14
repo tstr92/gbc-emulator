@@ -26,7 +26,7 @@
 /*---------------------------------------------------------------------*
  *  local definitions                                                  *
  *---------------------------------------------------------------------*/
-#define SCALING_FACTOR 3
+#define SCALING_FACTOR 2
 #define PALETTE_SIZE 6
 #define PALETTE_WIDTH (PALETTE_SIZE * 32 * SCALING_FACTOR)
 #define PALETTE_HEIGHT ((PALETTE_SIZE * 2 + 1) * SCALING_FACTOR)
