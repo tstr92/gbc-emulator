@@ -30,6 +30,9 @@
 #define debug_printf(...) do {} while (0)
 #endif
 
+#define MIN_DEBUG_LEVEL 0
+#define debug_print_level(_level, ...) if (_level >= MIN_DEBUG_LEVEL) { printf(__VA_ARGS__); }
+
 /*---------------------------------------------------------------------*
  *  type declarations                                                  *
  *---------------------------------------------------------------------*/

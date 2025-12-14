@@ -26,6 +26,8 @@
 
 #define ABS_DIFF(_a, _b) ((_a > _b) ? (_a - _b) : (_b - _a))
 
+#define todo_printf(...) debug_print_level(0, __VA_ARGS__)
+
 /*---------------------------------------------------------------------*
  *  local definitions                                                  *
  *---------------------------------------------------------------------*/
@@ -159,7 +161,7 @@ typedef struct
     {
         uint8_t oam_raw[0xA0];
         obj_attr_t object_attributes[40];
-    };
+    };    
 } ppu_mem_t;
 
 typedef enum
@@ -568,7 +570,7 @@ void ppu_pixel_fetcher_do(void)
 
         if (0 != (pixel_fetcher.bg_tile_attr & 0x60))
         {
-            printf("bg tile flip: %s\n", 
+            todo_printf("bg tile flip: %s\n", 
                 (0x60 == (pixel_fetcher.bg_tile_attr & 0x60)) ? "x + y" :
                 (0x20 == (pixel_fetcher.bg_tile_attr & 0x60)) ? "x" : "y"
             );
@@ -670,7 +672,7 @@ void gbc_ppu_tick(void)
             {
                 if (ppu.lcdc & LCDC_OBJ_SIZE)
                 {
-                    printf("todo LCDC_OBJ_SIZE\n");
+                    todo_printf("todo LCDC_OBJ_SIZE\n");
                     ppu_state.obj_size = 16;
                 }
                 else
@@ -744,13 +746,13 @@ void gbc_ppu_tick(void)
                         if (ppu_pixel_fifo_pop(&pixel_fetcher.obj_fifo, &sprite_pixel))
                         {
                             if (ppu.lcdc & LCDC_OBJ_EN)
-                        {
-                            if (!((0 == sprite_pixel.color_id) ||
-                                  (sprite_pixel.sprite_prio && (0 != pixel.color_id))))
                             {
-                                pixel = sprite_pixel;
-                                palette = sprite_pixel.dmg_palette ? ppu.obp1 : ppu.obp0;
-                                cram = &obj_cram[0];
+                                if (!((0 == sprite_pixel.color_id) ||
+                                        (sprite_pixel.sprite_prio && (0 != pixel.color_id))))
+                                {
+                                    pixel = sprite_pixel;
+                                    palette = sprite_pixel.dmg_palette ? ppu.obp1 : ppu.obp0;
+                                    cram = &obj_cram[0];
                                 }
                             }
                         }
