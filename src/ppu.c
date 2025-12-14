@@ -242,6 +242,7 @@ typedef struct
     uint8_t obj_tile_data[2];
 
     /* common */
+    bool window_was_drawn;
     uint8_t tile_y_offset;
     uint8_t tile_hi_lo;
     uint8_t wy;
@@ -522,7 +523,7 @@ void ppu_pixel_fetcher_do(void)
 
         p_tile_map = &(vram[0].tile_map[0][0]);
         p_attr_map = &(vram[1].tile_map[0][0]);
-        inWindow = (ppu.ly >= ppu.wy) && (pixel_fetcher.x >= (ppu.wx - 7));
+        inWindow = (ppu.ly >= ppu.wy) && (pixel_fetcher.x >= (ppu.wx - 7)) && (ppu.wx <= 166);
         windowEn = (ppu.lcdc & LCDC_WINDOW_EN);
 
         if ((!(inWindow && windowEn) && (ppu.lcdc & LCDC_BG_TILE_MAP)) ||
@@ -534,9 +535,10 @@ void ppu_pixel_fetcher_do(void)
         
         if (inWindow && windowEn)
         {
+            pixel_fetcher.window_was_drawn = true;
             tileX = ((pixel_fetcher.x - (ppu.wx - 7)) / 8);
-            tileY = ((      ppu.ly -  ppu.wy     ) / 8);
-            pixel_fetcher.tile_y_offset = 2 * ((ppu.ly -  ppu.wy) & 7);
+            tileY = ((      pixel_fetcher.wy      ) / 8);
+            pixel_fetcher.tile_y_offset = 2 * ((pixel_fetcher.wy ) & 7);
         }
         else
         {
@@ -700,6 +702,7 @@ void gbc_ppu_tick(void)
                 pixel_fetcher.bg_state = pfs_get_tile_0_e;
                 pixel_fetcher.obj_state = pfs_suspended_e;
                 pixel_fetcher.x = 0;
+                pixel_fetcher.window_was_drawn = false;
                 
                 ppu_state.lx = 0;
                 ppu_state.pixel_delay = 12;
@@ -830,9 +833,7 @@ void gbc_ppu_tick(void)
     {
         ppu_state.line_dot_cnt = 0;
         ppu.ly++;
-        if ((ppu.lcdc & LCDC_WINDOW_EN)    &&
-            (0 < ppu.wx) && (166 > ppu.wx) &&
-            (0 < ppu.wy) && (143 > ppu.wy))
+        if (pixel_fetcher.window_was_drawn)
         {
             pixel_fetcher.wy++;
         }
