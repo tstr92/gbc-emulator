@@ -743,12 +743,15 @@ void gbc_ppu_tick(void)
 
                         if (ppu_pixel_fifo_pop(&pixel_fetcher.obj_fifo, &sprite_pixel))
                         {
+                            if (ppu.lcdc & LCDC_OBJ_EN)
+                        {
                             if (!((0 == sprite_pixel.color_id) ||
                                   (sprite_pixel.sprite_prio && (0 != pixel.color_id))))
                             {
                                 pixel = sprite_pixel;
                                 palette = sprite_pixel.dmg_palette ? ppu.obp1 : ppu.obp0;
                                 cram = &obj_cram[0];
+                                }
                             }
                         }
 
