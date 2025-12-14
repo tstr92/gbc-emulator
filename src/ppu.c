@@ -124,7 +124,13 @@ typedef struct
 
 typedef struct
 {
-    obj_attr_t sprites[10];
+    obj_attr_t obj_attr;
+    uint8_t oam_idx;
+} oam_scan_attr_container_t;
+
+typedef struct
+{
+    oam_scan_attr_container_t sprites[10];
     uint8_t wr;
     uint8_t rd;
 } scanline_objects_t;
@@ -154,9 +160,6 @@ typedef struct
         uint8_t oam_raw[0xA0];
         obj_attr_t object_attributes[40];
     };
-
-    scanline_objects_t scobj;
-    
 } ppu_mem_t;
 
 typedef enum
@@ -232,6 +235,7 @@ typedef struct
     uint8_t bg_tile_data[2];
 
     /* sprite data */
+    scanline_objects_t scobj;
     pixel_fetcher_state_t obj_state;
     uint8_t obj_tile_number;
     pixel_fifo_t obj_fifo;
@@ -306,7 +310,7 @@ uint32_t dmg_palette[4] =
  *  private function declarations                                      *
  *---------------------------------------------------------------------*/
 // Comparison function for qsort
-int compare_sprite_x_offsets(const void *a, const void *b)
+int compare_sprite_x_pos(const void *a, const void *b)
 {
     const obj_attr_t *arg1 = (const obj_attr_t *)a;
     const obj_attr_t *arg2 = (const obj_attr_t *)b;
@@ -351,9 +355,9 @@ void ppu_pixel_fetcher_do(void)
 {
     if (pfs_suspended_e == pixel_fetcher.obj_state)
     {
-        if (ppu.scobj.wr > ppu.scobj.rd)
+        if (pixel_fetcher.scobj.wr > pixel_fetcher.scobj.rd)
         {
-            if (ppu.scobj.sprites[ppu.scobj.rd].x_pos <= (ppu_state.lx + 8))
+            if (pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.x_pos <= (ppu_state.lx + 8))
             {
                 /* found a matching sprite */
                 pixel_fetcher.bg_state = pfs_suspended_e;
@@ -366,24 +370,24 @@ void ppu_pixel_fetcher_do(void)
     {
     case pfs_get_tile_0_e:
     {
-        pixel_fetcher.tile_y_offset = ppu.ly - (ppu.scobj.sprites[ppu.scobj.rd].y_pos - 16);
+        pixel_fetcher.tile_y_offset = ppu.ly - (pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.y_pos - 16);
         if (16 == ppu_state.obj_size)
         {
             if (8 <= pixel_fetcher.tile_y_offset)
             {
                 /* bottom tile */
-                pixel_fetcher.obj_tile_number = (ppu.scobj.sprites[ppu.scobj.rd].tile_idx & 0xFE);
+                pixel_fetcher.obj_tile_number = (pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.tile_idx & 0xFE);
                 pixel_fetcher.tile_y_offset -= 8;
             }
             else
             {
                 /* top tile */
-                pixel_fetcher.obj_tile_number = (ppu.scobj.sprites[ppu.scobj.rd].tile_idx | 0x01);
+                pixel_fetcher.obj_tile_number = (pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.tile_idx | 0x01);
             }
         }
         else
         {
-            pixel_fetcher.obj_tile_number = ppu.scobj.sprites[ppu.scobj.rd].tile_idx;
+            pixel_fetcher.obj_tile_number = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.tile_idx;
         }
         pixel_fetcher.tile_hi_lo = 0;
 
@@ -394,9 +398,9 @@ void ppu_pixel_fetcher_do(void)
     case pfs_get_tile_data_hi_0_e:
     case pfs_get_tile_data_lo_0_e:
     {
-        uint8_t *p_window_tile_data = &(vram[ppu.scobj.sprites[ppu.scobj.rd].bank & 0x01].tile_data[0]);
+        uint8_t *p_window_tile_data = &(vram[pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.bank & 0x01].tile_data[0]);
         uint8_t data;
-        if (ppu.scobj.sprites[ppu.scobj.rd].y_flip)
+        if (pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.y_flip)
         {
             data = p_window_tile_data[pixel_fetcher.obj_tile_number * 16 + (16 - 2 * pixel_fetcher.tile_y_offset) + pixel_fetcher.tile_hi_lo];
         }
@@ -420,8 +424,8 @@ void ppu_pixel_fetcher_do(void)
         pixel_buffer_t oldPixels = {0};
         pixel_t pixel;
 
-        int numPixels = 8 - ((ppu_state.lx + 8) - ppu.scobj.sprites[ppu.scobj.rd].x_pos);
-        if (ppu.scobj.sprites[ppu.scobj.rd].x_flip)
+        int numPixels = 8 - ((ppu_state.lx + 8) - pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.x_pos);
+        if (pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.x_flip)
         {
             for (int i = 0; i <= (numPixels - 1); i++)
                 {
@@ -429,10 +433,10 @@ void ppu_pixel_fetcher_do(void)
                     {
                         .color_id       = ((pixel_fetcher.obj_tile_data[0] & (1<<i)) ? 0x01 : 0x00) |
                                         ((pixel_fetcher.obj_tile_data[1] & (1<<i)) ? 0x02 : 0x00) ,
-                        .sprite_prio    = ppu.scobj.sprites[ppu.scobj.rd].priority,
-                        .oam_tile_index = ppu.scobj.sprites[ppu.scobj.rd].tile_idx,
-                        .dmg_palette    = ppu.scobj.sprites[ppu.scobj.rd].dmg_palette,
-                        .cgb_palette    = ppu.scobj.sprites[ppu.scobj.rd].cgb_palette
+                        .sprite_prio    = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.priority,
+                        .oam_tile_index = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].oam_idx,
+                        .dmg_palette    = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.dmg_palette,
+                        .cgb_palette    = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.cgb_palette
                     };
                 newPixels.pixels[newPixels.fill_level++] = pixel;
             }
@@ -445,10 +449,10 @@ void ppu_pixel_fetcher_do(void)
                 {
                     .color_id    = ((pixel_fetcher.obj_tile_data[0] & (1<<i)) ? 0x01 : 0x00) |
                                     ((pixel_fetcher.obj_tile_data[1] & (1<<i)) ? 0x02 : 0x00) ,
-                    .sprite_prio = ppu.scobj.sprites[ppu.scobj.rd].priority,
-                    .oam_tile_index = ppu.scobj.sprites[ppu.scobj.rd].tile_idx,
-                    .dmg_palette    = ppu.scobj.sprites[ppu.scobj.rd].dmg_palette,
-                    .cgb_palette    = ppu.scobj.sprites[ppu.scobj.rd].cgb_palette
+                    .sprite_prio = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.priority,
+                    .oam_tile_index = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].oam_idx,
+                    .dmg_palette    = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.dmg_palette,
+                    .cgb_palette    = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.cgb_palette
                 };
                 newPixels.pixels[newPixels.fill_level++] = pixel;
             }
@@ -486,7 +490,7 @@ void ppu_pixel_fetcher_do(void)
             }
         }
 
-        ppu.scobj.rd++;
+        pixel_fetcher.scobj.rd++;
         pixel_fetcher.obj_state = pfs_suspended_e;
         pixel_fetcher.bg_state = pfs_get_tile_0_e;
     }
@@ -676,17 +680,18 @@ void gbc_ppu_tick(void)
             if (0 == (ppu_state.line_dot_cnt & 1))
             {
                 int idx = (ppu_state.line_dot_cnt >> 1);
-                if (( 10 > ppu.scobj.wr)                                          &&
+                if (( 10 > pixel_fetcher.scobj.wr)                                          &&
                     ((ppu.object_attributes[idx].y_pos - 16 +                  0) <= ppu.ly) &&
                     ((ppu.object_attributes[idx].y_pos - 16 + ppu_state.obj_size) >  ppu.ly))
                 {
-                    ppu.scobj.sprites[ppu.scobj.wr++] = ppu.object_attributes[idx];
+                    pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.wr  ].obj_attr = ppu.object_attributes[idx];
+                    pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.wr++].oam_idx = idx;
                 }
             }
 
             if ((80 - 1) <= ppu_state.line_dot_cnt)
             {
-                qsort(ppu.scobj.sprites, ppu.scobj.wr, sizeof(obj_attr_t), compare_sprite_x_offsets);
+                qsort(pixel_fetcher.scobj.sprites, pixel_fetcher.scobj.wr, sizeof(oam_scan_attr_container_t), compare_sprite_x_pos);
 
                 pixel_fetcher.bg_fifo.wr_rd_ptr = 0;
                 pixel_fetcher.obj_fifo.wr_rd_ptr = 0;
@@ -833,8 +838,8 @@ void gbc_ppu_tick(void)
         }
         if (144 > ppu.ly)
         {
-            ppu.scobj.wr = 0;
-            ppu.scobj.rd = 0;
+            pixel_fetcher.scobj.wr = 0;
+            pixel_fetcher.scobj.rd = 0;
             ppu_state.mode = mode2_oam_scan;
         }
         else if (154 > ppu.ly)
@@ -845,8 +850,8 @@ void gbc_ppu_tick(void)
         else
         {
             ppu.ly = 0;
-            ppu.scobj.wr = 0;
-            ppu.scobj.rd = 0;
+            pixel_fetcher.scobj.wr = 0;
+            pixel_fetcher.scobj.rd = 0;
             ppu_state.mode = mode2_oam_scan;
         }
     }
@@ -1175,7 +1180,6 @@ void gbc_ppu_write_internal_state(void)
 {
     emulator_cb_write_to_save_file((uint8_t*) &ppu          , sizeof(ppu          ), "ppu"          );
     emulator_cb_write_to_save_file((uint8_t*) &ppu_state    , sizeof(ppu_state    ), "ppu_state"    );
-    emulator_cb_write_to_save_file((uint8_t*) &pixel_fetcher, sizeof(pixel_fetcher), "pixel_fetcher");
     emulator_cb_write_to_save_file((uint8_t*) &vram         , sizeof(vram         ), "vram"         );
     emulator_cb_write_to_save_file((uint8_t*) &bg_cram      , sizeof(bg_cram      ), "bg_cram"      );
     emulator_cb_write_to_save_file((uint8_t*) &obj_cram     , sizeof(obj_cram     ), "obj_cram"     );
@@ -1193,10 +1197,6 @@ int gbc_ppu_set_internal_state(void)
     if (0 == ret)
     {
         emulator_cb_read_from_save_file((uint8_t*) &ppu_state, sizeof(ppu_state));
-    }
-    if (0 == ret)
-    {
-        emulator_cb_read_from_save_file((uint8_t*) &pixel_fetcher, sizeof(pixel_fetcher));
     }
     if (0 == ret)
     {
