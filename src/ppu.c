@@ -233,7 +233,19 @@ typedef struct
     pixel_fetcher_state_t bg_state;
     pixel_fifo_t bg_fifo;
     uint8_t bg_tile_number;
-    uint8_t bg_tile_attr;
+    union
+    {
+        uint8_t raw;
+        struct
+        {
+            uint8_t cgb_palette : 3; // 0-2
+            uint8_t bank        : 1; // 3
+            uint8_t reserved    : 1; // 4
+            uint8_t x_flip      : 1; // 5
+            uint8_t y_flip      : 1; // 6
+            uint8_t priority    : 1; // 7
+        };
+    } bg_tile_attr;
     uint8_t bg_tile_data[2];
 
     /* sprite data */
@@ -401,15 +413,15 @@ void ppu_pixel_fetcher_do(void)
     case pfs_get_tile_data_hi_0_e:
     case pfs_get_tile_data_lo_0_e:
     {
-        uint8_t *p_window_tile_data = &(vram[pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.bank & 0x01].tile_data[0]);
+        uint8_t *p_tile_data = &(vram[pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.bank].tile_data[0]);
         uint8_t data;
         if (pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.y_flip)
         {
-            data = p_window_tile_data[pixel_fetcher.obj_tile_number * 16 + (16 - 2 * pixel_fetcher.tile_y_offset) + pixel_fetcher.tile_hi_lo];
+            data = p_tile_data[pixel_fetcher.obj_tile_number * 16 + (16 - 2 * pixel_fetcher.tile_y_offset) + pixel_fetcher.tile_hi_lo];
         }
         else
         {
-            data = p_window_tile_data[pixel_fetcher.obj_tile_number * 16 + 2 * pixel_fetcher.tile_y_offset + pixel_fetcher.tile_hi_lo];
+            data = p_tile_data[pixel_fetcher.obj_tile_number * 16 + 2 * pixel_fetcher.tile_y_offset + pixel_fetcher.tile_hi_lo];
         }
         pixel_fetcher.obj_tile_data[pixel_fetcher.tile_hi_lo] = data;
         pixel_fetcher.tile_hi_lo++;
@@ -550,7 +562,7 @@ void ppu_pixel_fetcher_do(void)
         }
 
         pixel_fetcher.bg_tile_number = p_tile_map[tileY * 32 + tileX];
-        pixel_fetcher.bg_tile_attr = p_attr_map[tileY * 32 + tileX];
+        pixel_fetcher.bg_tile_attr.raw = p_attr_map[tileY * 32 + tileX];
         pixel_fetcher.tile_hi_lo = 0;
 
         #define in_range(_target, _val, _tolerance) ((_val > (_target  - _tolerance)) && (_val > (_target  + _tolerance)))
@@ -568,11 +580,11 @@ void ppu_pixel_fetcher_do(void)
             (void) *(volatile uint8_t *)&dummy;
         }
 
-        if (0 != (pixel_fetcher.bg_tile_attr & 0x60))
+        if (0 != (pixel_fetcher.bg_tile_attr.raw & 0x60))
         {
             todo_printf("bg tile flip: %s\n", 
-                (0x60 == (pixel_fetcher.bg_tile_attr & 0x60)) ? "x + y" :
-                (0x20 == (pixel_fetcher.bg_tile_attr & 0x60)) ? "x" : "y"
+                (0x60 == (pixel_fetcher.bg_tile_attr.raw & 0x60)) ? "x + y" :
+                (0x20 == (pixel_fetcher.bg_tile_attr.raw & 0x60)) ? "x" : "y"
             );
         }
         
@@ -583,22 +595,43 @@ void ppu_pixel_fetcher_do(void)
     case pfs_get_tile_data_hi_0_e:
     case pfs_get_tile_data_lo_0_e:
     {
-        uint8_t vram_idx = (0 != (pixel_fetcher.bg_tile_attr & 0x08)) ? 1 : 0;
-        uint8_t *p_window_tile_data = &(vram[vram_idx].tile_data[0]);
+        uint8_t vram_idx = (0 != (pixel_fetcher.bg_tile_attr.bank)) ? 1 : 0;
+        uint8_t *p_tile_data = &(vram[vram_idx].tile_data[0]);
         uint8_t data;
+        uint16_t y_offs;
+
+        if (pixel_fetcher.bg_tile_attr.y_flip)
+        {
+            y_offs = (16 - pixel_fetcher.tile_y_offset) + pixel_fetcher.tile_hi_lo;
+        }
+        else
+        {
+            y_offs = pixel_fetcher.tile_y_offset + pixel_fetcher.tile_hi_lo;
+        }
+
+        // if (pixel_fetcher.bg_tile_attr.y_flip)
+        // {
+        //     data = p_tile_data[pixel_fetcher.obj_tile_number * 16 + (16 - 2 * pixel_fetcher.tile_y_offset) + pixel_fetcher.tile_hi_lo];
+        // }
+        // else
+        // {
+        //     data = p_tile_data[pixel_fetcher.obj_tile_number * 16 + 2 * pixel_fetcher.tile_y_offset + pixel_fetcher.tile_hi_lo];
+        // }
+
+
         if (pixel_fetcher.bg_tile_number & 0x80)
         {
-            data = p_window_tile_data[0x800 + (pixel_fetcher.bg_tile_number & 0x7F) * 16 + pixel_fetcher.tile_y_offset + pixel_fetcher.tile_hi_lo];
+            data = p_tile_data[0x800 + (pixel_fetcher.bg_tile_number & 0x7F) * 16 + y_offs];
         }
         else
         {
             if (ppu.lcdc & LCDC_BG_WINDOW_TILES)
             {
-                data = p_window_tile_data[pixel_fetcher.bg_tile_number * 16 + pixel_fetcher.tile_y_offset + pixel_fetcher.tile_hi_lo];
+                data = p_tile_data[pixel_fetcher.bg_tile_number * 16 + y_offs];
             }
             else
             {
-                data = p_window_tile_data[0x1000 + pixel_fetcher.bg_tile_number * 16 + pixel_fetcher.tile_y_offset + pixel_fetcher.tile_hi_lo];
+                data = p_tile_data[0x1000 + pixel_fetcher.bg_tile_number * 16 + y_offs];
             }
         }
 
@@ -617,17 +650,35 @@ void ppu_pixel_fetcher_do(void)
     {
         if (ppu_pixel_fifo_empty(&pixel_fetcher.bg_fifo))
         {
-            for (int i = 7; i >= 0; i--)
+            if (!pixel_fetcher.bg_tile_attr.x_flip)
             {
-                pixel_t pixel = (pixel_t)
+                for (int i = 7; i >= 0; i--)
                 {
-                    .color_id = ((pixel_fetcher.bg_tile_data[0] & (1<<i)) ? 0x01 : 0x00) |
-                                ((pixel_fetcher.bg_tile_data[1] & (1<<i)) ? 0x02 : 0x00) ,
-                    .dmg_palette    = 0,
-                    .cgb_palette    = pixel_fetcher.bg_tile_attr & 0x07,
-                    .bg_prio        = (0 != (pixel_fetcher.bg_tile_attr & 0x80))
-                };
-                ppu_pixel_fifo_push(&pixel_fetcher.bg_fifo, pixel);
+                    pixel_t pixel = (pixel_t)
+                    {
+                        .color_id = ((pixel_fetcher.bg_tile_data[0] & (1<<i)) ? 0x01 : 0x00) |
+                                    ((pixel_fetcher.bg_tile_data[1] & (1<<i)) ? 0x02 : 0x00) ,
+                        .dmg_palette    = 0,
+                        .cgb_palette    = pixel_fetcher.bg_tile_attr.cgb_palette,
+                        .bg_prio        = pixel_fetcher.bg_tile_attr.priority
+                    };
+                    ppu_pixel_fifo_push(&pixel_fetcher.bg_fifo, pixel);
+                }
+            }
+            else
+            {
+                for (int i = 0; i < 8; i++)
+                {
+                    pixel_t pixel = (pixel_t)
+                    {
+                        .color_id = ((pixel_fetcher.bg_tile_data[0] & (1<<i)) ? 0x01 : 0x00) |
+                                    ((pixel_fetcher.bg_tile_data[1] & (1<<i)) ? 0x02 : 0x00) ,
+                        .dmg_palette    = 0,
+                        .cgb_palette    = pixel_fetcher.bg_tile_attr.cgb_palette,
+                        .bg_prio        = pixel_fetcher.bg_tile_attr.priority
+                    };
+                    ppu_pixel_fifo_push(&pixel_fetcher.bg_fifo, pixel);
+                }
             }
             pixel_fetcher.x += 8;
             pixel_fetcher.bg_state = pfs_get_tile_0_e;
@@ -745,10 +796,11 @@ void gbc_ppu_tick(void)
 
                         if (ppu_pixel_fifo_pop(&pixel_fetcher.obj_fifo, &sprite_pixel))
                         {
-                            if (ppu.lcdc & LCDC_OBJ_EN)
+                            bool show_sprite = (0 != (ppu.lcdc & LCDC_OBJ_EN)) && (0 != sprite_pixel.color_id) && ((0 == pixel.color_id) || (!pixel.bg_prio && !sprite_pixel.sprite_prio));
+                            if (show_sprite)
                             {
-                                if (!((0 == sprite_pixel.color_id) ||
-                                        (sprite_pixel.sprite_prio && (0 != pixel.color_id))))
+                                // if (!((0 == sprite_pixel.color_id) ||
+                                //         (sprite_pixel.sprite_prio && (0 != pixel.color_id))))
                                 {
                                     pixel = sprite_pixel;
                                     palette = sprite_pixel.dmg_palette ? ppu.obp1 : ppu.obp0;
