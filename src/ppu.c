@@ -796,16 +796,27 @@ void gbc_ppu_tick(void)
 
                         if (ppu_pixel_fifo_pop(&pixel_fetcher.obj_fifo, &sprite_pixel))
                         {
-                            bool show_sprite = (0 != (ppu.lcdc & LCDC_OBJ_EN)) && (0 != sprite_pixel.color_id) && ((0 == pixel.color_id) || (!pixel.bg_prio && !sprite_pixel.sprite_prio));
+                            bool show_sprite = false;
+                            if ((0 != (ppu.lcdc & LCDC_OBJ_EN)) && (0 != sprite_pixel.color_id))
+                            {
+                                if ((0 == pixel.color_id) || (0 == (ppu.lcdc & LCDC_BG_WNDOW_EN_PRIO)))
+                                {
+                                    show_sprite = true;
+                                }
+                                else if (pixel.bg_prio || sprite_pixel.sprite_prio)
+                                {
+                                    show_sprite = false;
+                                }
+                                else
+                                {
+                                    show_sprite = true;
+                                }
+                            }
                             if (show_sprite)
                             {
-                                // if (!((0 == sprite_pixel.color_id) ||
-                                //         (sprite_pixel.sprite_prio && (0 != pixel.color_id))))
-                                {
-                                    pixel = sprite_pixel;
-                                    palette = sprite_pixel.dmg_palette ? ppu.obp1 : ppu.obp0;
-                                    cram = &obj_cram[0];
-                                }
+                                pixel = sprite_pixel;
+                                palette = sprite_pixel.dmg_palette ? ppu.obp1 : ppu.obp0;
+                                cram = &obj_cram[0];
                             }
                         }
 
