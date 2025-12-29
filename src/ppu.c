@@ -238,7 +238,7 @@ typedef struct
         uint8_t raw;
         struct
         {
-            uint8_t cgb_palette : 3; // 0-2
+            uint8_t cgb_palette : 3; // 0-7
             uint8_t bank        : 1; // 3
             uint8_t reserved    : 1; // 4
             uint8_t x_flip      : 1; // 5
@@ -1038,10 +1038,7 @@ uint8_t gbc_ppu_get_memory(uint16_t addr)
 
         case BCPD_BGPD:
         {
-            if (mode3_draw != ppu_state.mode)
-            {
-                ret = bg_cram[ppu.bcps_bgpi & PALETTE_ADDR_MSK];
-            }
+            ret = bg_cram[ppu.bcps_bgpi & PALETTE_ADDR_MSK];
         }
         break;
 
@@ -1053,10 +1050,7 @@ uint8_t gbc_ppu_get_memory(uint16_t addr)
 
         case OCPD_OBPD:
         {
-            if (mode3_draw != ppu_state.mode)
-            {
-                ret = obj_cram[ppu.ocps_obpi & PALETTE_ADDR_MSK];
-            }
+            ret = obj_cram[ppu.ocps_obpi & PALETTE_ADDR_MSK];
         }
         break;
 
@@ -1178,10 +1172,7 @@ void gbc_ppu_set_memory(uint16_t addr, uint8_t val)
 
         case BCPD_BGPD:
         {
-            if (mode3_draw != ppu_state.mode)
-            {
-                bg_cram[ppu.bcps_bgpi & PALETTE_ADDR_MSK] = val;
-            }
+            bg_cram[ppu.bcps_bgpi & PALETTE_ADDR_MSK] = val;
             if (ppu.bcps_bgpi & PALETTE_AUTO_INC_MSK)
             {
                 ppu.bcps_bgpi = (ppu.bcps_bgpi + 1) & PALETTE_SPEC_MSK;
@@ -1197,10 +1188,7 @@ void gbc_ppu_set_memory(uint16_t addr, uint8_t val)
 
         case OCPD_OBPD:
         {
-            if (mode3_draw != ppu_state.mode)
-            {
-                obj_cram[ppu.ocps_obpi & PALETTE_ADDR_MSK] = val;
-            }
+            obj_cram[ppu.ocps_obpi & PALETTE_ADDR_MSK] = val;
             if (ppu.ocps_obpi & PALETTE_AUTO_INC_MSK)
             {
                 ppu.ocps_obpi = (ppu.ocps_obpi + 1) & PALETTE_SPEC_MSK;
