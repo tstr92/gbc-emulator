@@ -417,7 +417,7 @@ void ppu_pixel_fetcher_do(void)
         uint8_t data;
         if (pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.y_flip)
         {
-            data = p_tile_data[pixel_fetcher.obj_tile_number * 16 + (16 - 2 * pixel_fetcher.tile_y_offset) + pixel_fetcher.tile_hi_lo];
+            data = p_tile_data[pixel_fetcher.obj_tile_number * 16 + (14 - 2 * pixel_fetcher.tile_y_offset) + pixel_fetcher.tile_hi_lo];
         }
         else
         {
@@ -602,7 +602,7 @@ void ppu_pixel_fetcher_do(void)
 
         if (pixel_fetcher.bg_tile_attr.y_flip)
         {
-            y_offs = (16 - pixel_fetcher.tile_y_offset) + pixel_fetcher.tile_hi_lo;
+            y_offs = (14 - pixel_fetcher.tile_y_offset) + pixel_fetcher.tile_hi_lo;
         }
         else
         {
