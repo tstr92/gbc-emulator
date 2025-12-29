@@ -833,6 +833,8 @@ void gbc_ppu_tick(void)
 #endif
                         }
 
+                        emulator_debug_pixel_draw_event();
+
                         ppu_state.lx++;
                     }
                 }
@@ -883,6 +885,10 @@ void gbc_ppu_tick(void)
     {
         screen = ((&screen0[0][0] == screen) ? &screen1[0][0] : &screen0[0][0]);
         BUS_SET_IRQ(IRQ_VBLANK);
+#if (0 != PER_PIXEL_DRAW)
+        memset(screen0, 0xff, sizeof(screen0));
+        memset(screen1, 0xff, sizeof(screen1));
+#endif
     }
 
     /* check for end of scanline */
@@ -1216,6 +1222,9 @@ void gbc_ppu_set_memory(uint16_t addr, uint8_t val)
 
 void emulator_get_video_data(uint32_t *data)
 {
+#if (0 != PER_PIXEL_DRAW)
+    memcpy(data, screen, sizeof(screen0));
+#else
     if (screen == &screen0[0][0])
     {
         memcpy(data, screen1, sizeof(screen1));
@@ -1224,6 +1233,7 @@ void emulator_get_video_data(uint32_t *data)
     {
         memcpy(data, screen0, sizeof(screen0));
     }
+#endif
 }
 
 void emulator_debug_get_ppu_data(uint8_t *p_bg_cram, uint8_t *p_obj_cram, uint8_t *p_vram_0, uint8_t *p_vram_1)

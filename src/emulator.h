@@ -45,6 +45,7 @@ void emulator_wait_for_data_collection(void);
 void emulator_get_audio_data(uint8_t *ch_r, uint8_t *ch_l, size_t *num_samples);
 void emulator_get_video_data(uint32_t *data);
 void emulator_debug_get_ppu_data(uint8_t *p_bg_cram, uint8_t *p_obj_cram, uint8_t *p_vram_0, uint8_t *p_vram_1);
+void emulator_debug_pixel_draw_event(void);
 uint8_t emulator_get_speed(void);
 
 void emulator_write_save_file(void);
@@ -54,6 +55,7 @@ int emulator_load_save_file(void);
  */
 void emulator_cb_write_to_save_file(uint8_t *data, size_t size, char *name);
 int emulator_cb_read_from_save_file(uint8_t *data, size_t size);
+void emulator_tick_cb(void);
 
 /* Callback-Function that reads the current Button-states.
  * Use Defines GBC_JOYPAD_* to set joypad data.

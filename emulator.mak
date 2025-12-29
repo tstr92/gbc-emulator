@@ -18,6 +18,7 @@ SDL_TTF_LIB=$(SDL_TTF_PATH)/bin
 OUTDIR = .release
 
 DEBUG?=0
+PER_PIXEL_DRAW?=0
 
 VPATH = src
 
@@ -46,6 +47,7 @@ CFLAGS = \
 		-I$(SDL_TTF_INC) \
 		-DDEBUG=$(DEBUG) \
 		-DUSE_0xE000_AS_PUTC_DEVICE=0 \
+		-DPER_PIXEL_DRAW=$(PER_PIXEL_DRAW) \
 		-ffunction-sections \
 		-fdata-sections \
 		-g \

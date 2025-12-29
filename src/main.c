@@ -56,7 +56,6 @@ typedef struct
     Uint32 *screen_buffer;
     SDL_Texture *texture;
     SDL_AudioDeviceID audio_device;
-    Uint32 frame_draw_event;
     SDL_TimerID menu_timer;
     
     /* menu */
@@ -100,6 +99,10 @@ static int32_t gVolume = 50;
 static FILE *gSaveFile = NULL;
 static FILE *gSaveFileLog = NULL;
 static long gSaveFileSize = 0;
+static Uint32 gFrameDrawEvent = (Uint32) -1;
+#if (0 != DEBUG)
+static volatile uint32_t gWasteTime = 0;
+#endif
 
 static key_t keys[8] =
 {
@@ -158,10 +161,12 @@ static void audio_callback(void* userdata, Uint8* stream, int len)
         memset(stream, 0, len);
     }
 
+#if (0 == PER_PIXEL_DRAW)
     SDL_Event event;
     SDL_memset(&event, 0, sizeof(event));
-    event.type = p_sdl_rsc->frame_draw_event;
+    event.type = gFrameDrawEvent;
     SDL_PushEvent(&event);
+#endif
 
     SDL_LockMutex(gEmulatorDataMutex);
     gEmulatorDataCollected = 1;
@@ -176,7 +181,7 @@ static Uint32 timerCallback(Uint32 interval, void* param)
     sdl_rsc_t *p_sdl_rsc = (sdl_rsc_t *) param;
     SDL_Event event;
     SDL_memset(&event, 0, sizeof(event));
-    event.type = p_sdl_rsc->frame_draw_event;
+    event.type = gFrameDrawEvent;
     SDL_PushEvent(&event);
     return MENU_TIMER_INTERVAL_MS; // repeat
 }
@@ -257,8 +262,8 @@ static int init_sdl_rsc(sdl_rsc_t *p_sdl_rsc)
         debug_printf("  samples: %d:\n", want.samples);
     }
 
-    p_sdl_rsc->frame_draw_event = SDL_RegisterEvents(1);
-    if (p_sdl_rsc->frame_draw_event == (Uint32)-1)
+    gFrameDrawEvent = SDL_RegisterEvents(1);
+    if (gFrameDrawEvent == (Uint32)-1)
     {
         fprintf(stderr, "SDL_RegisterEvents Error: %s\n", SDL_GetError());
         return 1;
@@ -312,7 +317,7 @@ static void destroy_sdl_rsc(sdl_rsc_t *p_sdl_rsc)
         p_sdl_rsc->font = NULL;
     }
 
-    // no cleanup needed for p_sdl_rsc->frame_draw_event
+    // no cleanup needed for gFrameDrawEvent
 
     SDL_Quit();
 
@@ -616,6 +621,27 @@ int emulator_cb_read_from_save_file(uint8_t *data, size_t size)
     return ret;
 }
 
+void emulator_tick_cb(void)
+{
+#if (0 != DEBUG)
+    volatile uint32_t time_wasted = 0;
+    while (time_wasted++ < gWasteTime)
+    {
+        /* do nothing */
+    }
+#endif
+}
+
+void emulator_debug_pixel_draw_event(void)
+{
+#if (0 != PER_PIXEL_DRAW)
+    SDL_Event event;
+    SDL_memset(&event, 0, sizeof(event));
+    event.type = gFrameDrawEvent;
+    SDL_PushEvent(&event);
+#endif
+}
+
 /*---------------------------------------------------------------------*
  *  public functions                                                   *
  *---------------------------------------------------------------------*/
@@ -687,7 +713,7 @@ int main(int argc, char* argv[])
             fps(&sdl_rsc);
         }
 
-        if (e.type == sdl_rsc.frame_draw_event)
+        if (e.type == gFrameDrawEvent)
         {
             if (!menu)
             {

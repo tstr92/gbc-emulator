@@ -79,6 +79,7 @@ void emulator_run(void)
 	for (;;)
 	{
 		bus_tick();
+		emulator_tick_cb();
 		if (gbc_cpu_stopped())
 		{
 			end = platform_getSysTick_ms();
