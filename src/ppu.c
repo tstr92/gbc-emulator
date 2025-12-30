@@ -22,7 +22,7 @@
 #include "debug.h"
 #include "emulator.h"
 
-#define DEBUG_SHOW_WINDOW 1
+#define DEBUG_SHOW_WINDOW 0
 
 #define ABS_DIFF(_a, _b) ((_a > _b) ? (_a - _b) : (_b - _a))
 
@@ -127,6 +127,7 @@ typedef struct
 typedef struct
 {
     obj_attr_t obj_attr;
+    uint8_t object_size;
     uint8_t oam_idx;
 } oam_scan_attr_container_t;
 
@@ -179,7 +180,6 @@ typedef struct
     uint32_t lx;
     uint8_t x_discard_count;
     uint8_t pixel_delay;
-    uint8_t obj_size;
 } ppu_state_t;
 
 typedef struct
@@ -386,18 +386,22 @@ void ppu_pixel_fetcher_do(void)
     case pfs_get_tile_0_e:
     {
         pixel_fetcher.tile_y_offset = ppu.ly - (pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.y_pos - 16);
-        if (16 == ppu_state.obj_size)
+        if (16 == pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].object_size)
         {
             if (8 <= pixel_fetcher.tile_y_offset)
             {
                 /* bottom tile */
-                pixel_fetcher.obj_tile_number = (pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.tile_idx & 0xFE);
+                pixel_fetcher.obj_tile_number = (pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.tile_idx | 0x01);
                 pixel_fetcher.tile_y_offset -= 8;
             }
             else
             {
                 /* top tile */
-                pixel_fetcher.obj_tile_number = (pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.tile_idx | 0x01);
+                pixel_fetcher.obj_tile_number = (pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.tile_idx & 0xFE);
+            }
+            if (pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.y_flip)
+            {
+                pixel_fetcher.obj_tile_number ^= 1;
             }
         }
         else
@@ -443,16 +447,16 @@ void ppu_pixel_fetcher_do(void)
         if (pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.x_flip)
         {
             for (int i = 0; i <= (numPixels - 1); i++)
+            {
+                pixel = (pixel_t)
                 {
-                    pixel = (pixel_t)
-                    {
-                        .color_id       = ((pixel_fetcher.obj_tile_data[0] & (1<<i)) ? 0x01 : 0x00) |
-                                        ((pixel_fetcher.obj_tile_data[1] & (1<<i)) ? 0x02 : 0x00) ,
-                        .sprite_prio    = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.priority,
-                        .oam_tile_index = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].oam_idx,
-                        .dmg_palette    = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.dmg_palette,
-                        .cgb_palette    = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.cgb_palette
-                    };
+                    .color_id       = ((pixel_fetcher.obj_tile_data[0] & (1<<i)) ? 0x01 : 0x00) |
+                                    ((pixel_fetcher.obj_tile_data[1] & (1<<i)) ? 0x02 : 0x00) ,
+                    .sprite_prio    = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.priority,
+                    .oam_tile_index = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].oam_idx,
+                    .dmg_palette    = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.dmg_palette,
+                    .cgb_palette    = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.cgb_palette
+                };
                 newPixels.pixels[newPixels.fill_level++] = pixel;
             }
         }
@@ -582,10 +586,10 @@ void ppu_pixel_fetcher_do(void)
 
         if (0 != (pixel_fetcher.bg_tile_attr.raw & 0x60))
         {
-            todo_printf("bg tile flip: %s\n", 
-                (0x60 == (pixel_fetcher.bg_tile_attr.raw & 0x60)) ? "x + y" :
-                (0x20 == (pixel_fetcher.bg_tile_attr.raw & 0x60)) ? "x" : "y"
-            );
+            // todo_printf("bg tile flip: %s\n", 
+            //     (0x60 == (pixel_fetcher.bg_tile_attr.raw & 0x60)) ? "x + y" :
+            //     (0x20 == (pixel_fetcher.bg_tile_attr.raw & 0x60)) ? "x" : "y"
+            // );
         }
         
         pixel_fetcher.bg_state++;
@@ -719,27 +723,16 @@ void gbc_ppu_tick(void)
     {
         case mode2_oam_scan:
         {
-            if (0 == ppu_state.line_dot_cnt)
-            {
-                if (ppu.lcdc & LCDC_OBJ_SIZE)
-                {
-                    todo_printf("todo LCDC_OBJ_SIZE\n");
-                    ppu_state.obj_size = 16;
-                }
-                else
-                {
-                    ppu_state.obj_size = 8;
-                }
-            }
-
             if (0 == (ppu_state.line_dot_cnt & 1))
             {
                 int idx = (ppu_state.line_dot_cnt >> 1);
+                uint8_t object_size = (ppu.lcdc & LCDC_OBJ_SIZE) ? 16 : 8;
                 if (( 10 > pixel_fetcher.scobj.wr)                                          &&
-                    ((ppu.object_attributes[idx].y_pos - 16 +                  0) <= ppu.ly) &&
-                    ((ppu.object_attributes[idx].y_pos - 16 + ppu_state.obj_size) >  ppu.ly))
+                    ((ppu.object_attributes[idx].y_pos - 16 +           0) <= ppu.ly) &&
+                    ((ppu.object_attributes[idx].y_pos - 16 + object_size) >  ppu.ly))
                 {
                     pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.wr  ].obj_attr = ppu.object_attributes[idx];
+                    pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.wr  ].object_size = object_size;
                     pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.wr++].oam_idx = idx;
                 }
             }
@@ -873,22 +866,6 @@ void gbc_ppu_tick(void)
         break;
     }
 
-    if (ppu.ly == ppu.lyc)
-    {
-        if (0 == (ppu.stat & STAT_LYC_EQ_LY))
-        {
-            ppu.stat |= STAT_LYC_EQ_LY;
-            if (ppu.stat & STAT_LYC_INT_SEL)
-            {
-                BUS_SET_IRQ(IRQ_LCD);
-            }
-        }
-    }
-    else
-    {
-        ppu.stat &= ~STAT_LYC_EQ_LY;
-    }
-
     ppu.stat &= ~STAT_PPU_MODE;
     ppu.stat |= ppu_state.mode;
 
@@ -940,6 +917,21 @@ void gbc_ppu_tick(void)
         {
             BUS_SET_IRQ(IRQ_LCD);
         }
+    }
+    if (ppu.ly == ppu.lyc)
+    {
+        if (0 == (ppu.stat & STAT_LYC_EQ_LY))
+        {
+            ppu.stat |= STAT_LYC_EQ_LY;
+            if (ppu.stat & STAT_LYC_INT_SEL)
+            {
+                BUS_SET_IRQ(IRQ_LCD);
+            }
+        }
+    }
+    else
+    {
+        ppu.stat &= ~STAT_LYC_EQ_LY;
     }
 
     return;
@@ -1088,11 +1080,6 @@ void gbc_ppu_set_memory(uint16_t addr, uint8_t val)
 
         case LCDC:
         {
-            // if (!(val & LCDC_BG_WNDOW_EN_PRIO)) printf("window prio\n");
-            // if (!(val & LCDC_OBJ_EN)) printf("obj off\n");
-            
-            // printf("lcdc=%02x\n", val);
-
             ppu.lcdc = val;
         }
         break;
