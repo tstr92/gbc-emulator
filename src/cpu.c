@@ -1775,6 +1775,7 @@ void gbc_cpu_init(void)
 	cpu.af.a = 0x11;
 
 	cpu.pc = 0x0100;
+	cpu.sp = 0xFFFE;
 
 	return;
 }

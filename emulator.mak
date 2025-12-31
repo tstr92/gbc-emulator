@@ -51,7 +51,7 @@ CFLAGS = \
 		-ffunction-sections \
 		-fdata-sections \
 		-g \
-		-O1
+		-O0
 
 #-flto
 

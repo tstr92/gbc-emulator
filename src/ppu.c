@@ -613,15 +613,6 @@ void ppu_pixel_fetcher_do(void)
             y_offs = pixel_fetcher.tile_y_offset + pixel_fetcher.tile_hi_lo;
         }
 
-        // if (pixel_fetcher.bg_tile_attr.y_flip)
-        // {
-        //     data = p_tile_data[pixel_fetcher.obj_tile_number * 16 + (16 - 2 * pixel_fetcher.tile_y_offset) + pixel_fetcher.tile_hi_lo];
-        // }
-        // else
-        // {
-        //     data = p_tile_data[pixel_fetcher.obj_tile_number * 16 + 2 * pixel_fetcher.tile_y_offset + pixel_fetcher.tile_hi_lo];
-        // }
-
 
         if (pixel_fetcher.bg_tile_number & 0x80)
         {
@@ -765,7 +756,6 @@ void gbc_ppu_tick(void)
             if (0 == --ppu_state.pixel_delay)
             {
                 pixel_t pixel;
-                bool pixel_valid = false;
 
                 ppu_state.pixel_delay = 1;
 
@@ -775,7 +765,7 @@ void gbc_ppu_tick(void)
                     {
                         if (ppu_pixel_fifo_pop(&pixel_fetcher.bg_fifo , &pixel))
                         {
-                            ppu_pixel_fifo_pop(&pixel_fetcher.obj_fifo, &pixel);
+                            (void) ppu_pixel_fifo_pop(&pixel_fetcher.obj_fifo, &pixel);
                             ppu_state.x_discard_count--;
                         }
                     }
@@ -985,6 +975,7 @@ uint8_t gbc_ppu_get_memory(uint16_t addr)
         {
             ret = ppu.lyc;
         }
+        break;
 
         case BGP:
         {
