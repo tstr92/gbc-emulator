@@ -504,42 +504,43 @@ void bus_set_memory(uint16_t addr, uint8_t val)
 		}
 		break;
 
-		case 0xFF51: // VRAM DMA SRC Low
+		case 0xFF51: // VRAM DMA SRC High
 		{
-			// printf("%04x\n", addr);
+			// printf("[0x%04x] = %02x\n", addr, val);
+			bus.vram_dma.src &= 0x00FF;
+			bus.vram_dma.src |= ((uint16_t) val) << 8;
+		}
+		break;
+		case 0xFF52: // VRAM DMA SRC Low
+		{
+			// printf("[0x%04x] = %02x\n", addr, val);
 			/* "The four lower bits of this address will be ignored and treated as 0." */
 			bus.vram_dma.src &= 0xFF00;
 			bus.vram_dma.src |= val & 0xF0;
 		}
 		break;
-		case 0xFF52: // VRAM DMA SRC High
+		case 0xFF53: // VRAM DMA DST High
 		{
-			// printf("%04x\n", addr);
-			bus.vram_dma.src &= 0x00FF;
-			bus.vram_dma.src |= ((uint16_t) val) << 8;
-		}
-		break;
-		case 0xFF53: // VRAM DMA DST Low
-		{
-			// printf("%04x\n", addr);
-			/* "The four lower bits of this address will be ignored and treated as 0." */
-			bus.vram_dma.dst &= 0xFF00;
-			bus.vram_dma.dst |= val & 0xF0;
-		}
-		break;
-		case 0xFF54: // VRAM DMA DST High
-		{
-			// printf("%04x\n", addr);
+			// printf("[0x%04x] = %02x\n", addr, val);
 			/* "Only bits 12-4 are respected; others are ignored." */
 			bus.vram_dma.dst &= 0x00FF;
 			bus.vram_dma.dst |= (((uint16_t) val & 0x1F) << 8) | 0x8000;
 		}
 		break;
+		case 0xFF54: // VRAM DMA DST Low
+		{
+			// printf("[0x%04x] = %02x\n", addr, val);
+			/* "The four lower bits of this address will be ignored and treated as 0." */
+			bus.vram_dma.dst &= 0xFF00;
+			bus.vram_dma.dst |= val & 0xF0;
+		}
+		break;
 		case 0xFF55: // VRAM DMA Length/Mode/Start
 		{
+			// printf("[0x%04x] = %02x\n", addr, val);
 			if (!bus.dmg_mode)
 			{
-				if ((bus.vram_dma.active) && (HBlank_dma == bus.vram_dma.mode) && (!(val & 0x80)))
+				if ((bus.vram_dma.active) && (HBlank_dma == bus.vram_dma.mode) && (!(val & VRAM_DMA_HBLANK_MSK)))
 				{
 					bus.vram_dma.active = false;
 				}
@@ -562,9 +563,9 @@ void bus_set_memory(uint16_t addr, uint8_t val)
 						bus.vram_dma.mode = general_purpose_dma;
 						bus_dma_cpy(bus.vram_dma.dst, bus.vram_dma.src, bus.vram_dma.len);
 						gbc_cpu_stall(num_stall_cycles);
-						// printf("DMA Go! %d Bytes %04x -> %04X\n", bus.vram_dma.len, bus.vram_dma.src, bus.vram_dma.dst);
 						bus.vram_dma.active = false;
 					}
+					// printf("%sDMA Go! %d Bytes %04x -> %04X\n", (bus.vram_dma.mode == HBlank_dma) ? "Hblank" : "GP", bus.vram_dma.len, bus.vram_dma.src, bus.vram_dma.dst);
 				}
 			}
 		}
