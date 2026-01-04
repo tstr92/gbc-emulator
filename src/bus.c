@@ -367,6 +367,7 @@ uint8_t bus_get_memory(uint16_t addr)
 				ret |= 0x80;
 			}
 		}
+		break;
 
 		case 0x8000 ... 0x9FFF:   // Video RAM
 		case 0xFF40 ... 0xFF45:
