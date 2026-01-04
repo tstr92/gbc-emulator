@@ -865,9 +865,6 @@ void gbc_ppu_tick(void)
         break;
     }
 
-    ppu.stat &= ~STAT_PPU_MODE;
-    ppu.stat |= ppu_state.mode;
-
     if ((0 == ppu_state.line_dot_cnt) && (144 == ppu.ly))
     {
         screen = ((&screen0[0][0] == screen) ? &screen1[0][0] : &screen0[0][0]);
@@ -907,7 +904,9 @@ void gbc_ppu_tick(void)
         }
     }
 
-    if (ppu_state.mode != current_ppu_mode)
+    ppu.stat &= ~STAT_PPU_MODE;
+    ppu.stat |= ppu_state.mode;
+    if (ppu_state.mode != previous_ppu_mode)
     {
         /* eval STAT IRQ state */
         if (((ppu.stat & STAT_MODE0_INT_SEL) && (mode0_hblank   == ppu_state.mode)) ||
@@ -931,6 +930,18 @@ void gbc_ppu_tick(void)
     else
     {
         ppu.stat &= ~STAT_LYC_EQ_LY;
+    }
+    
+    {
+        static uint8_t stat_prev = 0x85;
+        if (((0 == (stat_prev & STAT_MODE0_INT_SEL)) && (0 != (ppu.stat & STAT_MODE0_INT_SEL)) && (mode0_hblank   == ppu_state.mode)) ||
+            ((0 == (stat_prev & STAT_MODE1_INT_SEL)) && (0 != (ppu.stat & STAT_MODE1_INT_SEL)) && (mode1_vblank   == ppu_state.mode)) ||
+            ((0 == (stat_prev & STAT_MODE2_INT_SEL)) && (0 != (ppu.stat & STAT_MODE2_INT_SEL)) && (mode2_oam_scan == ppu_state.mode)) ||
+            ((0 == (stat_prev & STAT_LYC_INT_SEL  )) && (0 != (ppu.stat & STAT_LYC_INT_SEL  )) && (ppu.ly         == ppu.lyc       )))
+        {
+            BUS_SET_IRQ(IRQ_LCD);
+        }
+        stat_prev = ppu.stat;
     }
 
     return;
