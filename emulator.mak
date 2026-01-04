@@ -50,6 +50,7 @@ CFLAGS = \
 		-DPER_PIXEL_DRAW=$(PER_PIXEL_DRAW) \
 		-ffunction-sections \
 		-fdata-sections \
+		-Wimplicit-fallthrough=3 \
 		-g \
 		-O0
 
