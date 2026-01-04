@@ -58,7 +58,7 @@
 #define LCDC_WINDOW_TILE_MAP    (1<<6)   // 0 = 9800–9BFF; 1 = 9C00–9FFF
 #define LCDC_LCD_PPU_EN         (1<<7)   // 0 = Off; 1 = On
 
-#define STAT_PPU_MODE           (0x03)
+#define STAT_PPU_MODE           ((1<<0) | (1<<1))
 #define STAT_LYC_EQ_LY          (1<<2)
 #define STAT_MODE0_INT_SEL      (1<<3)
 #define STAT_MODE1_INT_SEL      (1<<4)
@@ -314,7 +314,8 @@ volatile uint8_t breakx, breaky;
 
 uint32_t dmg_palette[4] =
 {
-    0xFFFFFFFF, 0xAAAAAAAA, 0x55555555, 0x00000000
+    // 0xFFFFFFFF, 0xAAAAAAAA, 0x55555555, 0x00000000
+    0xE0F8D000, 0x88C07000, 0x34685600, 0x08182000
     
     /* *Original* DMG Palette */
     /* credit: https://lospec.com/palette-list/dmg-nso */
@@ -436,7 +437,7 @@ void ppu_pixel_fetcher_do(void)
 
     case pfs_get_tile_data_hi_1_e:
         pixel_fetcher.obj_state++;
-        /* no break */
+        /* fall through */
     case pfs_push_e:
     {
         pixel_buffer_t newPixels = {0};
@@ -640,7 +641,7 @@ void ppu_pixel_fetcher_do(void)
 
     case pfs_get_tile_data_hi_1_e:
         pixel_fetcher.bg_state++;
-        /* no break */
+        /* fall through */
     case pfs_push_e:
     {
         if (ppu_pixel_fifo_empty(&pixel_fetcher.bg_fifo))
@@ -1070,9 +1071,9 @@ uint8_t gbc_ppu_get_memory(uint16_t addr)
         break;
         
         default:
-            {
-                DBG_ERROR();
-            }
+        {
+            DBG_ERROR();
+        }
         break;
     }
 
