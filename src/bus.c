@@ -329,7 +329,8 @@ uint8_t bus_get_memory(uint16_t addr)
 		case 0xD000 ... 0xDFFF:   // Game Boy’s working RAM bank 1
 		case 0xF000 ... 0xFDFF:   // Echo RAM
 		{
-			ret = bus.wram[bus.wram_banksel][addr & 0xFFF];
+			uint8_t banksel = (0 == bus.wram_banksel) ? 1 : bus.wram_banksel & 0x07;
+			ret = bus.wram[banksel][addr & 0xFFF];
 		}
 		break;
 
@@ -478,7 +479,8 @@ void bus_set_memory(uint16_t addr, uint8_t val)
 		case 0xD000 ... 0xDFFF:   // Game Boy’s working RAM bank 1
 		case 0xF000 ... 0xFDFF:   // Echo RAM
 		{
-			bus.wram[bus.wram_banksel][addr & 0xFFF] = val;
+			uint8_t banksel = (0 == bus.wram_banksel) ? 1 : bus.wram_banksel & 0x07;
+			bus.wram[banksel][addr & 0xFFF] = val;
 		}
 		break;
 
@@ -732,7 +734,7 @@ int gbc_bus_set_internal_state(void)
 
 void bus_init(void)
 {
-	bus.wram_banksel = 1;
+	bus.wram_banksel = 0xF8;
 	bus.rom_banksel = 1;
 	bus.ext_ram_banksel = 0;
 	bus.ext_ram_enabled = false;
