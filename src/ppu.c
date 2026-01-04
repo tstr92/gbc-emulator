@@ -359,6 +359,20 @@ static inline bool ppu_pixel_fifo_pop(pixel_fifo_t *pFifo, pixel_t *p_px)
      return ret;
 }
 
+static inline bool ppu_pixel_fifo_del_front(pixel_fifo_t *pFifo)
+{
+    bool ret = false;
+
+    if (!ppu_pixel_fifo_empty(pFifo))
+    {
+        pFifo->fill_level--;
+        pFifo->wr--;
+        ret = true;
+    }
+    
+     return ret;
+}
+
 static inline uint8_t ppu_pixel_fifo_num_empty_slots(pixel_fifo_t *pFifo)
 {
     return FIFO_NUM_ENTRIES - pFifo->fill_level;
@@ -542,10 +556,10 @@ void ppu_pixel_fetcher_do(void)
 
         p_tile_map = &(vram[0].tile_map[0][0]);
         p_attr_map = &(vram[1].tile_map[0][0]);
-        inWindow = (ppu.ly >= ppu.wy) && (pixel_fetcher.x >= (ppu.wx - 7)) && (ppu.wx <= 166);
+        inWindow = (ppu.ly >= ppu.wy) && ((int) pixel_fetcher.x >= (int)(ppu.wx - 7)) && (ppu.wx <= 166);
         windowEn = (ppu.lcdc & LCDC_WINDOW_EN);
 
-        if ((!(inWindow && windowEn) && (ppu.lcdc & LCDC_BG_TILE_MAP)) ||
+        if (((!(inWindow && windowEn)) && (ppu.lcdc & LCDC_BG_TILE_MAP)) ||
             ( windowEn && inWindow && (ppu.lcdc & LCDC_WINDOW_TILE_MAP)))
         {
             p_tile_map = &(vram[0].tile_map[1][0]);
@@ -554,9 +568,38 @@ void ppu_pixel_fetcher_do(void)
         
         if (inWindow && windowEn)
         {
+            if (!pixel_fetcher.window_was_drawn)
+            {
+                /* drawing window pixels for the first time on this scanline: adjust x-offset */
+                if (7 > ppu.wx)
+                {
+                    ppu_state.x_discard_count = (7 - ppu.wx);
+                }
+                else
+                {
+                    /* one tile is 8 pixels wide. if the window does not start on a tile boundary, we must discard some pixels  */
+                    int bg_px_discard_cnt = (pixel_fetcher.x - (ppu.wx - 7));  // discard the offset-amount of pixels (lifo-style)
+                    for (int i = 0; i < bg_px_discard_cnt; i++)
+                    {
+                        if (!ppu_pixel_fifo_del_front(&pixel_fetcher.bg_fifo))
+                        {
+                            /* no more pixels to remove ... */
+                            break;
+                        }
+                        else if (ppu_state.x_discard_count)
+                        {
+                            /* maybe the upper layer state machine already wants to discard some pixels due to viewport offsets.
+                             * Lets not discard pixels twice.
+                             * todo: is this correct?
+                             */
+                            ppu_state.x_discard_count--;
+                        }
+                    }
+                }
+            }
             pixel_fetcher.window_was_drawn = true;
             tileX = ((pixel_fetcher.x - (ppu.wx - 7)) / 8);
-            tileY = ((      pixel_fetcher.wy      ) / 8);
+            tileY = ((       pixel_fetcher.wy       ) / 8);
             pixel_fetcher.tile_y_offset = 2 * ((pixel_fetcher.wy ) & 7);
         }
         else
