@@ -718,7 +718,17 @@ void gbc_ppu_init(void)
 
 void gbc_ppu_tick(void)
 {
-    ppu_mode_t current_ppu_mode = ppu_state.mode;
+    ppu_mode_t previous_ppu_mode = ppu_state.mode;
+
+    if (0 == (ppu.lcdc & LCDC_LCD_PPU_EN))
+    {
+        ppu.ly = 0;
+        pixel_fetcher.scobj.wr = 0;
+        pixel_fetcher.scobj.rd = 0;
+        ppu_state.line_dot_cnt = 0;
+        ppu_state.mode = mode2_oam_scan;
+        return;
+    }
 
     switch (ppu_state.mode)
     {
