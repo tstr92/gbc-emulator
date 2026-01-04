@@ -84,7 +84,7 @@ typedef struct
 #if (0 == BUILD_TEST_DLL)
 	uint8_t wram[8][4*1024];
 	uint8_t ext_ram[16][8*1024];
-	uint8_t hram[127];
+	uint8_t hram[128];
 #else
 	uint8_t memory[64 * 1024];
 #endif
