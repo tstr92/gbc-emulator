@@ -704,6 +704,15 @@ void ppu_pixel_fetcher_do(void)
 void gbc_ppu_init(void)
 {
     ppu_state.mode = mode2_oam_scan;
+    ppu.lcdc = 0x91;
+    ppu.stat = 0x85;
+    ppu.bgp = 0xFC; /* 0: white, 1-3: black */
+    ppu.obp0 = 0xFF;
+    ppu.obp1 = 0xFF;
+    ppu.vbk = 0xFE;
+
+
+    return;
 }
 
 void gbc_ppu_tick(void)

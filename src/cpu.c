@@ -1771,9 +1771,16 @@ void gbc_cpu_init(void)
 	   A value of $11 indicates CGB (or GBA) hardware, if so, CGB functions can be used (if unlocked, see above).
 	   When A=$11, you may also examine Bit 0 of the CPUs B-Register to separate between CGB (bit cleared) and
 	   GBA (bit set), by that detection it is possible to use “repaired” color palette data matching for GBA displays.
+	   Power up states:
+	   https://gbdev.io/pandocs/Power_Up_Sequence.html
 	*/
 	cpu.af.a = 0x11;
-
+	cpu.af.f = FLAG_Z;
+	cpu.bc.bc = 0x00;
+	cpu.de.d = 0xFF;
+	cpu.de.e = 0x56;
+	cpu.hl.h = 0x00;
+	cpu.hl.l = 0x0D;
 	cpu.pc = 0x0100;
 	cpu.sp = 0xFFFE;
 

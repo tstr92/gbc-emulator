@@ -23,7 +23,6 @@
  *---------------------------------------------------------------------*/
 #define SERIAL_DATA_ADDRESS      0xFF01
 #define SERIAL_CTRL_ADDRESS      0xFF02
-#define SERIAL_IDLE              0xFF     /* no data */
 
 /*---------------------------------------------------------------------*
  *  external declarations                                              *
@@ -36,8 +35,8 @@
 /*---------------------------------------------------------------------*
  *  private data                                                       *
  *---------------------------------------------------------------------*/
-uint8_t SERIAL_DATA = SERIAL_IDLE;
-uint8_t SERIAL_CTRL = 0;
+uint8_t SERIAL_DATA = 0x00;
+uint8_t SERIAL_CTRL = 0x7F;
 
 /*---------------------------------------------------------------------*
  *  private function declarations                                      *

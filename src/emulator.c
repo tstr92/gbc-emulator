@@ -64,6 +64,7 @@ int emulator_load_game(char *fileName)
 	gbc_cpu_init();
 	bus_init();
 	gbc_apu_init();
+	gbc_ppu_init();
 	trace_init();
 
 	return 0;

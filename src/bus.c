@@ -739,6 +739,9 @@ void bus_init(void)
 	bus.rom_banksel = 1;
 	bus.ext_ram_banksel = 0;
 	bus.ext_ram_enabled = false;
+	bus.IF = 0xE1;
+	bus.IE = 0x00;
+	bus.key1 = 0x7E;
 }
 
 void bus_tick(void)
