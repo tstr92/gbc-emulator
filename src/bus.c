@@ -47,12 +47,29 @@
 #define KEY1_DOUBLE_SPEED  0x80
 #define KEY1_SWITCH_ARMED  0x01
 
+#define RTC_BIT_HALT              (1<<6)
+#define RTC_BIT_DAY_COUNTER_CARRY (1<<7)
+typedef struct
+{
+	uint32_t rtc_ticker;
+	uint8_t seconds;
+	uint8_t minutes;
+	uint8_t hours;
+	uint8_t days_low;
+	uint8_t days_hi_ctrl;
+	uint8_t latch[5];
+} rtc_t;
+
 typedef struct
 {
 	uint8_t wram_banksel;
 	uint8_t ext_ram_banksel;
 	uint16_t rom_banksel;
 	bool ext_ram_enabled;
+	
+	/* rtc */
+	rtc_t rtc;
+	uint8_t rtc_access;
 
 	uint8_t IF;
 	uint8_t IE;
@@ -60,6 +77,8 @@ typedef struct
 
 	bool dmg_mode;
 	uint8_t cartridge_type;
+
+	uint8_t rp;
 
 	struct
 	{
@@ -149,7 +168,9 @@ static int bus_check_cartridge_header(cartridge_header_t *pHeader);
 static inline void bus_dma_cpy(uint16_t dst, uint16_t src, uint16_t len);
 static void bus_oam_dma_tick(void);
 static void bus_write_mbc(uint16_t addr, uint8_t val);
+static void bus_write_mbc3(uint16_t addr, uint8_t val);
 static void bus_write_mbc5(uint16_t addr, uint8_t val);
+static void bus_rtc_tick(void);
 
 /*---------------------------------------------------------------------*
  *  private functions                                                  *
@@ -230,16 +251,101 @@ static void bus_write_mbc(uint16_t addr, uint8_t val)
 {
 	switch (bus.cartridge_type)
 	{
+		case 0x0F ... 0x13:
+		{
+			bus_write_mbc3(addr, val);
+		}
+		break;
+
 		case 0x19 ... 0x1E:
 		{
 			bus_write_mbc5(addr, val);
 		}
 		break;
 
-		default: break;
+		default:
+		{
+			printf("unknown cartridge_type %02x (w %02x -> %04x).\n", bus.cartridge_type, val, addr);
+		}
+		break;
 	}
 
 	return;
+}
+
+static void bus_write_mbc3(uint16_t addr, uint8_t val)
+{	
+	switch (addr)
+	{
+		case 0x0000 ... 0x1FFF:
+		{
+			if (0x0A == (val & 0x0F))
+			{
+				bus.ext_ram_enabled = true;
+			}
+			else if (0x00 == (val & 0x0F))
+			{
+				bus.ext_ram_enabled = false;
+			}
+		}
+		break;
+		
+		case 0x2000 ... 0x3FFF:
+		{
+			if (0 == val)
+			{
+				bus.rom_banksel = 1;
+			}
+			else
+			{
+				bus.rom_banksel = val & 0x7F;
+			}
+		}
+		break;
+		
+		case 0x4000 ... 0x5FFF:
+		{
+			bus.rtc_access = 0;
+			switch (val)
+			{
+				case 0x00 ... 0x07:
+				{
+					bus.ext_ram_banksel = val;
+				}
+				break;
+
+				case 0x08 ... 0x0C:
+				{
+					bus.rtc_access = val;
+				}
+				break;
+
+				default:
+				{
+					printf("Cannot handle MBC3 memory access (w %02x -> %04x).\n", val, addr);
+				}
+				break;
+			}
+		}
+		break;
+		
+		case 0x6000 ... 0x7FFF:
+		{
+			static uint8_t latch = 1;
+			if (0 == latch && 1 == val)
+			{
+				bus.rtc.latch[0] = bus.rtc.seconds;
+				bus.rtc.latch[1] = bus.rtc.minutes;
+				bus.rtc.latch[2] = bus.rtc.hours;
+				bus.rtc.latch[3] = bus.rtc.days_low;
+				bus.rtc.latch[4] = bus.rtc.days_hi_ctrl;
+			}
+			latch = val;
+		}
+		break;
+
+		default: break;
+	}
 }
 
 static void bus_write_mbc5(uint16_t addr, uint8_t val)
@@ -283,6 +389,38 @@ static void bus_write_mbc5(uint16_t addr, uint8_t val)
 	}
 }
 
+static void bus_rtc_tick(void)
+{
+	const uint32_t TICKS_PER_SEC = 4000000; /* @4MHz */
+	if (!(bus.rtc.days_hi_ctrl & RTC_BIT_HALT))
+	{
+		if (++bus.rtc.rtc_ticker >= TICKS_PER_SEC)
+		{
+			bus.rtc.rtc_ticker = 0;
+			if (++bus.rtc.seconds > 59)
+			{
+				bus.rtc.seconds = 0;
+				if (++bus.rtc.minutes > 59)
+				{
+					bus.rtc.minutes = 0;
+					if (++bus.rtc.hours > 23)
+					{
+						bus.rtc.hours = 0;
+						if (++bus.rtc.days_low == 0)
+						{
+							bus.rtc.days_hi_ctrl = (bus.rtc.days_hi_ctrl + 1) & 0xC1;
+							if (0 == (bus.rtc.days_hi_ctrl & 1))
+							{
+								bus.rtc.days_hi_ctrl |= RTC_BIT_DAY_COUNTER_CARRY;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
 /*---------------------------------------------------------------------*
  *  public functions                                                   *
  *---------------------------------------------------------------------*/
@@ -311,7 +449,22 @@ uint8_t bus_get_memory(uint16_t addr)
 		{
 			if (bus.ext_ram_enabled)
 			{
-				ret = bus.ext_ram[bus.ext_ram_banksel][addr & 0x1FFF];
+				if (0 != bus.rtc_access)
+				{
+					switch (bus.rtc_access)
+					{
+					case 0x08: ret = bus.rtc.latch[0]; break; /* seconds      */
+					case 0x09: ret = bus.rtc.latch[1]; break; /* minutes      */
+					case 0x0A: ret = bus.rtc.latch[2]; break; /* hours        */
+					case 0x0B: ret = bus.rtc.latch[3]; break; /* days_low     */
+					case 0x0C: ret = bus.rtc.latch[4]; break; /* days_hi_ctrl */
+					default: printf("default case read rtc_access\n"); break;
+					}
+				}
+				else
+				{
+					ret = bus.ext_ram[bus.ext_ram_banksel][addr & 0x1FFF];
+				}
 			}
 			else
 			{
@@ -427,7 +580,8 @@ uint8_t bus_get_memory(uint16_t addr)
 
 		case RP:
 		{
-			ret = 0x02; // currently not receiving
+			printf("read [RP]\n");
+			ret = bus.rp | 0x02; // currently not receiving
 		}
 		break;
 
@@ -466,7 +620,22 @@ void bus_set_memory(uint16_t addr, uint8_t val)
 		{
 			if (bus.ext_ram_enabled)
 			{
-				bus.ext_ram[bus.ext_ram_banksel][addr & 0x1FFF] = val;
+				if (0 != bus.rtc_access)
+				{
+					switch (bus.rtc_access)
+					{
+					case 0x08: bus.rtc.seconds      = val; break;
+					case 0x09: bus.rtc.minutes      = val; break;
+					case 0x0A: bus.rtc.hours        = val; break;
+					case 0x0B: bus.rtc.days_low     = val; break;
+					case 0x0C: bus.rtc.days_hi_ctrl = val; break;
+					default: printf("default case write rtc_access\n"); break;
+					}
+				}
+				else
+				{
+					bus.ext_ram[bus.ext_ram_banksel][addr & 0x1FFF] = val;
+				}
 			}
 		}
 		break;
@@ -608,7 +777,8 @@ void bus_set_memory(uint16_t addr, uint8_t val)
 		break;
 
 		case RP:
-			printf("todo Infrared\n");
+			bus.rp = val;
+			printf("[RP] = %02x\n", val);
 		break;
 
 		case SVBK:
@@ -770,6 +940,8 @@ void bus_tick(void)
 	for (int i = 0; i < dmg_cycle_cnt; i++)
 	{
 		gbc_ppu_tick();
+
+		bus_rtc_tick();
 
 		/* throttle APU to always run at 4MHz, even if emulator runs at higher speed
 		*  -> we stay at 60 fps
