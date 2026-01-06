@@ -54,6 +54,34 @@
 #define ISR_VECTOR_SERIAL        0x0058
 #define ISR_VECTOR_JOYPAD        0x0060
 
+#if (0 != DEBUG)
+#define TRACE(_opcode_size)                                    \
+{                                                              \
+	trace_data_t trace_data =                                  \
+	{                                                          \
+		.a = cpu.af.a,                                         \
+		.f = cpu.af.f,                                         \
+		.b = cpu.bc.b,                                         \
+		.c = cpu.bc.c,                                         \
+		.d = cpu.de.d,                                         \
+		.e = cpu.de.e,                                         \
+		.h = cpu.hl.h,                                         \
+		.l = cpu.hl.l,                                         \
+		.pc = cpu.pc,                                          \
+		.sp = cpu.sp,                                          \
+		.opcode_size = _opcode_size,                           \
+		.cycle_cnt = cpu.cycle_cnt,                            \
+	};                                                         \
+	for (int i = 0; i < _opcode_size; i++)                     \
+	{                                                          \
+		trace_data.code_mem[i] = bus_get_memory(cpu.pc + i);   \
+	}                                                          \
+	trace_opcode(&trace_data);                                 \
+}
+#else
+#define TRACE(...) do {} while (0)
+#endif
+
 /*---------------------------------------------------------------------*
  *  local data types                                                   *
  *---------------------------------------------------------------------*/
@@ -378,13 +406,15 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_NOP:
 	{
+		TRACE(1);
 		cycle_cnt = 4;
-		cpu.pc++;
+		cpu.pc += 1;
 	}
 	break;
 	
 	case OPC_STOP:
 	{
+		TRACE(2);
 		cpu.stopped = true;
 		cycle_cnt = 4;
 		cpu.pc += 2;
@@ -395,30 +425,34 @@ static uint8_t cpu_handle_opcode(void)
 	
 	case OPC_HALT:
 	{
+		TRACE(1);
 		cycle_cnt = 4;
-		cpu.pc++;
+		cpu.pc += 1;
 		cpu.halted = true;
 	}
 	break;
 	
 	case OPC_EI:
 	{
+		TRACE(1);
 		cpu.interrupts_enabled = true;
 		cycle_cnt = 4;
-		cpu.pc++;
+		cpu.pc += 1;
 	}
 	break;
 	
 	case OPC_DI:
 	{
+		TRACE(1);
 		cpu.interrupts_enabled = false;
 		cycle_cnt = 4;
-		cpu.pc++;
+		cpu.pc += 1;
 	}
 	break;
 	
 	case OPC_DAA:
 	{
+		TRACE(1);
 		uint8_t a_reg = cpu.af.a;
 		bool N = (0 != (cpu.af.f & FLAG_N));
 		bool C = (0 != (cpu.af.f & FLAG_C));
@@ -452,42 +486,46 @@ static uint8_t cpu_handle_opcode(void)
 		eval_Z_flag(a_reg);
 		cpu.af.a = a_reg;
 		cycle_cnt = 4;
-		cpu.pc++;
+		cpu.pc += 1;
 	}
 	break;
 	
 	case OPC_CPL:
 	{
+		TRACE(1);
 		set_N_flag(true);
 		set_H_flag(true);
 		cpu.af.a = ~cpu.af.a;
 		cycle_cnt = 4;
-		cpu.pc++;
+		cpu.pc += 1;
 	}
 	break;
 	
 	case OPC_SCF:
 	{
+		TRACE(1);
 		set_N_flag(false);
 		set_H_flag(false);
 		set_C_flag(true);
 		cycle_cnt = 4;
-		cpu.pc++;
+		cpu.pc += 1;
 	}
 	break;
 	
 	case OPC_CCF:
 	{
+		TRACE(1);
 		set_N_flag(false);
 		set_H_flag(false);
 		set_C_flag((0 == (cpu.af.f & FLAG_C)));
 		cycle_cnt = 4;
-		cpu.pc++;
+		cpu.pc += 1;
 	}
 	break;
 
 	case OPC_RLCA:
 	{
+		TRACE(1);
 		bool bit7 = (0 != (cpu.af.a & (1<<7)));
 		cpu.af.a = (cpu.af.a << 1) | (bit7 ? 0x1 : 0);
 		set_Z_flag(false);
@@ -501,6 +539,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_RLA:
 	{
+		TRACE(1);
 		bool bit7 = (0 != (cpu.af.a & (1<<7)));
 		bool c = (0 != (cpu.af.f & FLAG_C));
 		cpu.af.a = (cpu.af.a << 1) | (c ? 0x1 : 0);
@@ -515,6 +554,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_RRCA:
 	{
+		TRACE(1);
 		bool bit0 = (0 != (cpu.af.a & (1<<0)));
 		cpu.af.a = (cpu.af.a >> 1) | (bit0 ? 0x80 : 0);
 		set_Z_flag(false);
@@ -528,6 +568,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_RRA:
 	{
+		TRACE(1);
 		bool bit0 = (0 != (cpu.af.a & (1<<0)));
 		bool c = (0 != (cpu.af.f & FLAG_C));
 		cpu.af.a = (cpu.af.a >> 1) | (c ? 0x80 : 0);
@@ -542,6 +583,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_CB:
 	{
+		TRACE(2);
 		opcode2 = bus_get_memory(cpu.pc + 1);;
 		opcode2_t opcode_type2 = opcode_types2[opcode2];
 		uint8_t *target_lut[8] = {
@@ -815,6 +857,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_CALL:
 	{
+		TRACE(3);
 		bool cond_lut[4] = {
 			(0 == (cpu.af.f & FLAG_Z)), (0 != (cpu.af.f & FLAG_Z)),
 			(0 == (cpu.af.f & FLAG_C)), (0 != (cpu.af.f & FLAG_C)),
@@ -843,6 +886,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_CAL2:
 	{
+		TRACE(3);
 		uint8_t hi, lo;
 		uint16_t next_pc = cpu.pc + 3;
 		lo = bus_get_memory(cpu.pc + 1);
@@ -856,6 +900,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_JRc:
 	{
+		TRACE(2);
 		bool cond_lut[4] = {
 			(0 == (cpu.af.f & FLAG_Z)), (0 != (cpu.af.f & FLAG_Z)),
 			(0 == (cpu.af.f & FLAG_C)), (0 != (cpu.af.f & FLAG_C)),
@@ -879,6 +924,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_JR:
 	{
+		TRACE(2);
 		int8_t offset = (int8_t) bus_get_memory(cpu.pc + 1);
 		cpu.pc += (offset + 2);
 		cycle_cnt = 12;
@@ -887,6 +933,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_JPc:
 	{
+		TRACE(3);
 		bool cond_lut[4] = {
 			(0 == (cpu.af.f & FLAG_Z)), (0 != (cpu.af.f & FLAG_Z)),
 			(0 == (cpu.af.f & FLAG_C)), (0 != (cpu.af.f & FLAG_C)),
@@ -912,6 +959,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_JP:
 	{
+		TRACE(3);
 		uint8_t hi, lo;
 		lo = bus_get_memory(cpu.pc + 1);
 		hi = bus_get_memory(cpu.pc + 2);
@@ -922,6 +970,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_JPHL:
 	{
+		TRACE(1);
 		cpu.pc = cpu.hl.hl;
 		cycle_cnt = 4;
 	}
@@ -929,6 +978,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_RETc:
 	{
+		TRACE(1);
 		bool cond_lut[4] = {
 			(0 == (cpu.af.f & FLAG_Z)), (0 != (cpu.af.f & FLAG_Z)),
 			(0 == (cpu.af.f & FLAG_C)), (0 != (cpu.af.f & FLAG_C)),
@@ -957,6 +1007,7 @@ static uint8_t cpu_handle_opcode(void)
 		/* fall through */
 	case OPC_RET:
 	{
+		TRACE(1);
 		uint8_t lo, hi;
 		lo = bus_get_memory(cpu.sp++);
 		hi = bus_get_memory(cpu.sp++);
@@ -967,6 +1018,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_RST:
 	{
+		TRACE(1);
 		uint8_t offset_lut[8] = {0x00, 0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38};
 		uint8_t t = (opcode & 0x38) >> 3;
 		uint8_t offset = offset_lut[t];
@@ -982,6 +1034,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_ADD:
 	{
+		TRACE(1);
 		uint8_t operand_lut[8] = {
 			cpu.bc.b, cpu.bc.c, cpu.de.d, cpu.de.e, 
 			cpu.hl.h, cpu.hl.l,        0, cpu.af.a,
@@ -1002,6 +1055,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_SUB:
 	{
+		TRACE(1);
 		uint8_t operand_lut[8] = {
 			cpu.bc.b, cpu.bc.c, cpu.de.d, cpu.de.e, 
 			cpu.hl.h, cpu.hl.l,        0, cpu.af.a, 
@@ -1022,6 +1076,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_AND:
 	{
+		TRACE(1);
 		uint8_t operand_lut[8] = {
 			cpu.bc.b, cpu.bc.c, cpu.de.d, cpu.de.e, 
 			cpu.hl.h, cpu.hl.l,        0, cpu.af.a, 
@@ -1041,6 +1096,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_OR:
 	{
+		TRACE(1);
 		uint8_t operand_lut[8] = {
 			cpu.bc.b, cpu.bc.c, cpu.de.d, cpu.de.e, 
 			cpu.hl.h, cpu.hl.l,        0, cpu.af.a, 
@@ -1060,6 +1116,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_ADD2:
 	{
+		TRACE(2);
 		uint8_t operand = bus_get_memory(cpu.pc + 1);
 		eval_C_flag(cpu.af.a, operand, false);
 		eval_H_flag(cpu.af.a, operand, false);
@@ -1073,6 +1130,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_SUB2:
 	{
+		TRACE(2);
 		uint8_t operand = bus_get_memory(cpu.pc + 1);
 		eval_C_flag(cpu.af.a, operand, true);
 		eval_H_flag(cpu.af.a, operand, true);
@@ -1086,6 +1144,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_AND2:
 	{
+		TRACE(2);
 		uint8_t operand = bus_get_memory(cpu.pc + 1);
 		set_C_flag(false);
 		set_H_flag(true);
@@ -1099,6 +1158,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_OR2:
 	{
+		TRACE(2);
 		uint8_t operand = bus_get_memory(cpu.pc + 1);
 		set_C_flag(false);
 		set_H_flag(false);
@@ -1112,6 +1172,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_ADC:
 	{
+		TRACE(1);
 		uint8_t operand_lut[8] = {
 			cpu.bc.b, cpu.bc.c, cpu.de.d, cpu.de.e, 
 			cpu.hl.h, cpu.hl.l,        0, cpu.af.a, 
@@ -1133,6 +1194,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_SBC:
 	{
+		TRACE(1);
 		uint8_t operand_lut[8] = {
 			cpu.bc.b, cpu.bc.c, cpu.de.d, cpu.de.e, 
 			cpu.hl.h, cpu.hl.l,        0, cpu.af.a, 
@@ -1154,6 +1216,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_XOR:
 	{
+		TRACE(1);
 		uint8_t operand_lut[8] = {
 			cpu.bc.b, cpu.bc.c, cpu.de.d, cpu.de.e, 
 			cpu.hl.h, cpu.hl.l,        0, cpu.af.a, 
@@ -1173,6 +1236,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_CP:
 	{
+		TRACE(1);
 		uint8_t operand_lut[8] = {
 			cpu.bc.b, cpu.bc.c, cpu.de.d, cpu.de.e, 
 			cpu.hl.h, cpu.hl.l,        0, cpu.af.a, 
@@ -1194,6 +1258,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_ADC2:
 	{
+		TRACE(2);
 		uint8_t operand = bus_get_memory(cpu.pc + 1);
 		uint8_t c = (cpu.af.f & FLAG_C) ? 1: 0;
 		eval_C_flag_c(cpu.af.a, operand, false, c);
@@ -1208,6 +1273,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_SBC2:
 	{
+		TRACE(2);
 		uint8_t operand = bus_get_memory(cpu.pc + 1);
 		uint8_t c = (cpu.af.f & FLAG_C) ? 1: 0;
 		eval_C_flag_c(cpu.af.a, operand, true, c);
@@ -1222,6 +1288,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_XOR2:
 	{
+		TRACE(2);
 		uint8_t operand = bus_get_memory(cpu.pc + 1);
 		uint8_t c = (cpu.af.f & FLAG_C) ? 1: 0;
 		set_C_flag(false);
@@ -1236,6 +1303,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_CP2:
 	{
+		TRACE(2);
 		uint8_t operand = bus_get_memory(cpu.pc + 1);
 		uint8_t c = (cpu.af.f & FLAG_C) ? 1: 0;
 		eval_C_flag(cpu.af.a, operand, true);
@@ -1249,6 +1317,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_LD:
 	{
+		TRACE(1);
 		uint8_t src_lut[8] = {
 			cpu.bc.b, cpu.bc.c, cpu.de.d, cpu.de.e,
 			cpu.hl.h, cpu.hl.l,        0, cpu.af.a
@@ -1270,6 +1339,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_LD2:
 	{
+		TRACE(1);
 		uint8_t src_lut[8] = {
 			cpu.bc.b, cpu.bc.c, cpu.de.d, cpu.de.e,
 			cpu.hl.h, cpu.hl.l, 0       , cpu.af.a
@@ -1284,6 +1354,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_LDd8:
 	{
+		TRACE(2);
 		uint8_t data = bus_get_memory(cpu.pc + 1);
 		uint8_t *dst_lut[8] = {
 			&cpu.bc.b, &cpu.bc.c, &cpu.de.d, &cpu.de.e,
@@ -1299,6 +1370,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_LDd82:
 	{
+		TRACE(2);
 		uint8_t data = bus_get_memory(cpu.pc + 1);
 		uint8_t r = (opcode & 0x38) >> 3;
 		bus_set_memory(cpu.hl.hl, data);
@@ -1309,6 +1381,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_LDa2r:
 	{
+		TRACE(1);
 		uint8_t mux = (opcode & 0x30) >> 4;
 		switch (mux)
 		{
@@ -1325,6 +1398,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_LDr2a:
 	{
+		TRACE(1);
 		uint8_t src;
 		uint8_t mux = (opcode & 0x30) >> 4;
 		switch (mux)
@@ -1343,6 +1417,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_LDd16:
 	{
+		TRACE(3);
 		uint8_t hi, lo;
 		uint16_t d16;
 		uint8_t mux = (opcode & 0x30) >> 4;
@@ -1364,6 +1439,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_LD16s:
 	{
+		TRACE(3);
 		uint8_t hi, lo;
 		uint16_t addr;
 		lo = bus_get_memory(cpu.pc + 1);
@@ -1378,6 +1454,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_LDHa8:
 	{
+		TRACE(2);
 		uint8_t a8 = bus_get_memory(cpu.pc + 1);
 		uint16_t addr = 0xff00 + a8;
 		bus_set_memory(addr, cpu.af.a);
@@ -1388,6 +1465,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_LDHA:
 	{
+		TRACE(2);
 		uint8_t a8 = bus_get_memory(cpu.pc + 1);
 		uint16_t addr = 0xff00 + a8;
 		cpu.af.a = bus_get_memory(addr);
@@ -1398,6 +1476,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_LDCA:
 	{
+		TRACE(1);
 		uint16_t addr = 0xff00 + cpu.bc.c;
 		bus_set_memory(addr, cpu.af.a);
 		cycle_cnt = 8;
@@ -1407,6 +1486,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_LDAC:
 	{
+		TRACE(1);
 		uint16_t addr = 0xff00 + cpu.bc.c;
 		cpu.af.a = bus_get_memory(addr);
 		cycle_cnt = 8;
@@ -1416,6 +1496,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_PUSH:
 	{
+		TRACE(1);
 		uint8_t r = (opcode & 0x30) >> 4;
 		uint16_t src_lut[4] = { cpu.bc.bc, cpu.de.de, cpu.hl.hl, cpu.af.af };
 		uint16_t src = src_lut[r];
@@ -1428,6 +1509,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_POP:
 	{
+		TRACE(1);
 		uint8_t hi, lo;
 		uint8_t r = (opcode & 0x30) >> 4;
 		uint16_t *dst_lut[4] = { &cpu.bc.bc, &cpu.de.de, &cpu.hl.hl, &cpu.af.af };
@@ -1442,6 +1524,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_INC1:
 	{
+		TRACE(1);
 		uint8_t mux = (opcode & 0x30) >> 4;
 		uint8_t *val;
 		switch (mux)
@@ -1462,6 +1545,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_INC2:
 	{
+		TRACE(1);
 		uint8_t mux = (opcode & 0x30) >> 4;
 		uint8_t *val;
 		switch (mux)
@@ -1483,6 +1567,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_INC3:
 	{
+		TRACE(1);
 		uint8_t val = bus_get_memory(cpu.hl.hl);
 		eval_H_flag(val, 1, false);
 		set_N_flag(false);
@@ -1495,6 +1580,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_INC16:
 	{
+		TRACE(1);
 		uint8_t mux = (opcode & 0x30) >> 4;
 		switch (mux)
 		{
@@ -1511,6 +1597,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_DEC1:
 	{
+		TRACE(1);
 		uint8_t mux = (opcode & 0x30) >> 4;
 		uint8_t *val;
 		switch (mux)
@@ -1531,6 +1618,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_DEC2:
 	{
+		TRACE(1);
 		uint8_t mux = (opcode & 0x30) >> 4;
 		uint8_t *val;
 		switch (mux)
@@ -1552,6 +1640,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_DEC3:
 	{
+		TRACE(1);
 		uint8_t val = bus_get_memory(cpu.hl.hl);
 		eval_H_flag(val, 1, true);
 		set_N_flag(true);
@@ -1564,6 +1653,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_DEC16:
 	{
+		TRACE(1);
 		uint8_t mux = (opcode & 0x30) >> 4;
 		switch (mux)
 		{
@@ -1580,6 +1670,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_ADD16:
 	{
+		TRACE(1);
 		uint16_t operand_lut[4] = { cpu.bc.bc, cpu.de.de, cpu.hl.hl, cpu.sp };
 		uint8_t ss = (opcode & 0x30) >> 4;
 		uint16_t operand = operand_lut[ss];
@@ -1594,6 +1685,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_ADDSP:
 	{
+		TRACE(2);
 		int8_t r8 = bus_get_memory(cpu.pc + 1);
 		set_Z_flag(false);
 		set_N_flag(false);
@@ -1607,6 +1699,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_LDHLS:
 	{
+		TRACE(2);
 		int8_t r8 = bus_get_memory(cpu.pc + 1);
 		set_Z_flag(false);
 		set_N_flag(false);
@@ -1620,6 +1713,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_LDSHL:
 	{
+		TRACE(1);
 		cpu.sp = cpu.hl.hl;
 		cycle_cnt = 8;
 		cpu.pc += 1;
@@ -1628,6 +1722,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_LD16A:
 	{
+		TRACE(3);
 		uint8_t hi, lo;
 		uint16_t a16;
 		lo = bus_get_memory(cpu.pc + 1);
@@ -1641,6 +1736,7 @@ static uint8_t cpu_handle_opcode(void)
 
 	case OPC_LDA16:
 	{
+		TRACE(3);
 		uint8_t hi, lo;
 		uint16_t a16;
 		lo = bus_get_memory(cpu.pc + 1);
@@ -1654,8 +1750,6 @@ static uint8_t cpu_handle_opcode(void)
 
 	default: DBG_ERROR(); break;
 	}
-
-	trace(opcode, opcode2);
 
 	return cycle_cnt;
 }
@@ -1705,26 +1799,31 @@ static uint8_t cpu_handle_interrupt(void)
 			/* setup pc for interrupt and clear respective interrupt flag */
 			if (isr & INTERRUPT_VBLANK)
 			{
+				trace_event("ISR_VECTOR_VBLANK");
 				cpu.pc = ISR_VECTOR_VBLANK;
 				bus_set_memory(INTERRUPT_FLAGS_ADDRESS, (IF & ~INTERRUPT_VBLANK));
 			}
 			else if (isr & INTERRUPT_LCD)
 			{
+				trace_event("ISR_VECTOR_LCD");
 				cpu.pc = ISR_VECTOR_LCD;
 				bus_set_memory(INTERRUPT_FLAGS_ADDRESS, (IF & ~INTERRUPT_LCD));
 			}
 			else if (isr & INTERRUPT_TIMER)
 			{
+				trace_event("ISR_VECTOR_TIMER");
 				cpu.pc = ISR_VECTOR_TIMER;
 				bus_set_memory(INTERRUPT_FLAGS_ADDRESS, (IF & ~INTERRUPT_TIMER));
 			}
 			else if (isr & INTERRUPT_SERIAL)
 			{
+				trace_event("ISR_VECTOR_SERIAL");
 				cpu.pc = ISR_VECTOR_SERIAL;
 				bus_set_memory(INTERRUPT_FLAGS_ADDRESS, (IF & ~INTERRUPT_SERIAL));
 			}
 			else /*if (isr & INTERRUPT_JOYPAD)*/
 			{
+				trace_event("ISR_VECTOR_JOYPAD");
 				cpu.pc = ISR_VECTOR_JOYPAD;
 				bus_set_memory(INTERRUPT_FLAGS_ADDRESS, (IF & ~INTERRUPT_JOYPAD));
 			}

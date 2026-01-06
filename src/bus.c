@@ -26,6 +26,7 @@
 #include "apu.h"
 #include "ppu.h"
 #include "debug.h"
+#include "trace.h"
 
 /*---------------------------------------------------------------------*
  *  local definitions                                                  *
@@ -499,6 +500,7 @@ void bus_set_memory(uint16_t addr, uint8_t val)
 
 		case KEY1:
 		{
+			TRACE_EVENT("Writing %02x to key1.", val);
 			bus.key1 &= ~KEY1_SWITCH_ARMED;
 			bus.key1 |= (val & KEY1_SWITCH_ARMED);
 		}
