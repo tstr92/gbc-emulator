@@ -169,6 +169,10 @@ static void audio_callback(void* userdata, Uint8* stream, int len)
 #endif
 
     SDL_LockMutex(gEmulatorDataMutex);
+    if (0 != gEmulatorDataCollected)
+    {
+        printf("audio sampling error\n");
+    }
     gEmulatorDataCollected = 1;
     SDL_CondSignal(gEmulatorDataCond);  // Signal the waiting thread
     SDL_UnlockMutex(gEmulatorDataMutex);

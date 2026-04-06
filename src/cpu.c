@@ -76,6 +76,10 @@
 	{                                                          \
 		trace_data.code_mem[i] = bus_get_memory(cpu.pc + i);   \
 	}                                                          \
+	for (int i = 0; i < 4; i++)                                \
+	{                                                          \
+		trace_data.stack[i] = bus_get_memory(cpu.sp + i);      \
+	}                                                          \
 	trace_opcode(&trace_data);                                 \
 }
 #else
@@ -416,6 +420,7 @@ static uint8_t cpu_handle_opcode(void)
 	{
 		TRACE(2);
 		cpu.stopped = true;
+		cpu.halted = true;
 		cycle_cnt = 4;
 		cpu.pc += 2;
 		gbc_timer_diva_reset();
@@ -1873,6 +1878,7 @@ void gbc_cpu_init(void)
 	   Power up states:
 	   https://gbdev.io/pandocs/Power_Up_Sequence.html
 	*/
+#if 0 /*cgb*/
 	cpu.af.a = 0x11;
 	cpu.af.f = FLAG_Z;
 	cpu.bc.bc = 0x00;
@@ -1882,7 +1888,18 @@ void gbc_cpu_init(void)
 	cpu.hl.l = 0x0D;
 	cpu.pc = 0x0100;
 	cpu.sp = 0xFFFE;
-
+#else /* dmg */
+	cpu.af.a = 0x01;
+	cpu.af.f = 0;
+	cpu.bc.b = 0xff;
+	cpu.bc.c = 0x13;
+	cpu.de.d = 0x00;
+	cpu.de.e = 0xc1;
+	cpu.hl.h = 0x00;
+	cpu.hl.l = 0x03;
+	cpu.pc = 0x0100;
+	cpu.sp = 0xFFFE;
+#endif
 	return;
 }
 

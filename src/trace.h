@@ -54,6 +54,7 @@ typedef struct
     uint8_t opcode_size;
     uint8_t code_mem[3];
     uint64_t cycle_cnt;
+    uint8_t stack[4];
 } trace_data_t;
 
 /*---------------------------------------------------------------------*

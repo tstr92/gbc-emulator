@@ -15,6 +15,7 @@
  *  include files                                                      *
  *---------------------------------------------------------------------*/
 #include <stdio.h>
+#include <stdlib.h>
 #include <io.h>
 
 #include "emulator.h"
@@ -49,6 +50,7 @@
 
 #define RTC_BIT_HALT              (1<<6)
 #define RTC_BIT_DAY_COUNTER_CARRY (1<<7)
+
 typedef struct
 {
 	uint32_t rtc_ticker;
@@ -64,6 +66,7 @@ typedef struct
 {
 	uint8_t wram_banksel;
 	uint8_t ext_ram_banksel;
+	uint16_t rom0_banksel;
 	uint16_t rom_banksel;
 	bool ext_ram_enabled;
 	
@@ -77,6 +80,8 @@ typedef struct
 
 	bool dmg_mode;
 	uint8_t cartridge_type;
+	size_t cartridge_ram_size;
+	size_t cartridge_rom_size;
 
 	uint8_t rp;
 
@@ -147,6 +152,7 @@ typedef struct
 } cartridge_header_t;
 #define CARTRIDGE_HEADER_SIZE sizeof(cartridge_header_t)
 
+
 /*---------------------------------------------------------------------*
  *  external declarations                                              *
  *---------------------------------------------------------------------*/
@@ -160,14 +166,18 @@ typedef struct
  *---------------------------------------------------------------------*/
 static bus_t bus;
 static uint8_t rom[512][16*1024];
+static char cartridge_filename[FILENAME_MAX] = "\0";
 
 /*---------------------------------------------------------------------*
  *  private function declarations                                      *
  *---------------------------------------------------------------------*/
 static int bus_check_cartridge_header(cartridge_header_t *pHeader);
+static void set_file_ext(char *fname, char *ext, size_t buffer_len);
+static void save_sram_state(void);
 static inline void bus_dma_cpy(uint16_t dst, uint16_t src, uint16_t len);
 static void bus_oam_dma_tick(void);
 static void bus_write_mbc(uint16_t addr, uint8_t val);
+static void bus_write_mbc1(uint16_t addr, uint8_t val);
 static void bus_write_mbc3(uint16_t addr, uint8_t val);
 static void bus_write_mbc5(uint16_t addr, uint8_t val);
 static void bus_rtc_tick(void);
@@ -175,16 +185,25 @@ static void bus_rtc_tick(void);
 /*---------------------------------------------------------------------*
  *  private functions                                                  *
  *---------------------------------------------------------------------*/
+size_t bus_ram_size_from_header(cartridge_header_t *pHeader)
+{
+	const size_t ram_sizes[] =
+	{
+		0, 0, 8192, 32768, 13172, 65536
+	};
+	return ram_sizes[pHeader->ram_size];
+}
+
+size_t bus_rom_size_from_header(cartridge_header_t *pHeader)
+{
+	return 32768 * (1 << pHeader->rom_size);
+}
+
 int bus_check_cartridge_header(cartridge_header_t *pHeader)
 {
 	int ret;
 	uint8_t chksum;
 	size_t rom_size;
-	size_t ram_size;
-	const size_t ram_sizes[] =
-	{
-		0, 0, 8192, 32768, 13172, 65536
-	};
 
 	chksum = 0;
 	for (int i = 0x34; i <= 0x4C; i++)
@@ -203,24 +222,94 @@ int bus_check_cartridge_header(cartridge_header_t *pHeader)
 	}
 
 	rom_size = (32768 *  (1 << pHeader->rom_size)) / 1024;
-	ram_size = ram_sizes[pHeader->ram_size];
 
-	debug_printf("        entry_point: %08x\n", pHeader->entry_point      );
-	debug_printf("              title: '%s'\n", pHeader->title_0          );
-	debug_printf("  new_licensee_code: '%s'\n", pHeader->new_licensee_code);
-	debug_printf("           GBC_flag: %02x\n", pHeader->GBC_flag         );
-	debug_printf("           SGB_flag: %02x\n", pHeader->SGB_flag         );
-	debug_printf("     cartridge_type: %02x\n", pHeader->cartridge_type   );
-	debug_printf("           rom_size: %dk\n" , rom_size                  );
-	debug_printf("           ram_size: %d\n",   ram_size                  );
-	debug_printf("   destination_code: %02x\n", pHeader->destination_code );
-	debug_printf("  old_licensee_code: %02x\n", pHeader->old_licensee_code);
-	debug_printf("   mask_rom_version: %02x\n", pHeader->mask_rom_version );
-	debug_printf("      header_chksum: %02x\n", pHeader->header_chksum    );
-	debug_printf("calc. header_chksum: %02x\n", chksum                    );
-	debug_printf("      global_chksum: %04x\n", pHeader->global_chksum    );
+	debug_printf("        entry_point: %08x\n", pHeader->entry_point             );
+	debug_printf("              title: '%s'\n", pHeader->title_0                 );
+	debug_printf("  new_licensee_code: '%s'\n", pHeader->new_licensee_code       );
+	debug_printf("           GBC_flag: %02x\n", pHeader->GBC_flag                );
+	debug_printf("           SGB_flag: %02x\n", pHeader->SGB_flag                );
+	debug_printf("     cartridge_type: %02x\n", pHeader->cartridge_type          );
+	debug_printf("           rom_size: %dk\n" , rom_size                         );
+	debug_printf("           ram_size: %d\n",   bus_ram_size_from_header(pHeader));
+	debug_printf("   destination_code: %02x\n", pHeader->destination_code        );
+	debug_printf("  old_licensee_code: %02x\n", pHeader->old_licensee_code       );
+	debug_printf("   mask_rom_version: %02x\n", pHeader->mask_rom_version        );
+	debug_printf("      header_chksum: %02x\n", pHeader->header_chksum           );
+	debug_printf("calc. header_chksum: %02x\n", chksum                           );
+	debug_printf("      global_chksum: %04x\n", pHeader->global_chksum           );
 
 	return 1;
+}
+
+static void set_file_ext(char *fname, char *ext, size_t buffer_len)
+{
+	size_t fname_len;
+	int extension_offset;
+	
+	fname_len = strnlen(fname, buffer_len - 1);
+	extension_offset = fname_len;
+	for (int i = fname_len - 1; i > 0; i--)
+	{
+		bool break_loop = false;
+		switch (cartridge_filename[i])
+		{
+			case '.': extension_offset = i; break_loop = true; break;
+			case '\\':
+			case '/': break_loop = true; break;
+			default: break;
+		}
+		if (break_loop)
+		{
+			break;
+		}
+	}
+	snprintf(&fname[extension_offset], buffer_len - extension_offset, ".sav");
+	fname[buffer_len-1] = '\0';
+	return;
+}
+
+static void save_sram_state(void)
+{
+	/* did we load something before? */
+	if ('\0' != cartridge_filename[0])
+	{
+		const uint8_t mbcs_with_rtc[] = {0x0F, 0x10, 0x11, 0x12, 0x13};
+		bool has_rtc = false;
+		char savename[FILENAME_MAX];
+		FILE * savefile;
+
+		strncpy(savename, cartridge_filename, FILENAME_MAX-1);
+
+		for (int i = 0; i < sizeof(mbcs_with_rtc)/sizeof(mbcs_with_rtc[0]); i++)
+		{
+			if (bus.cartridge_type == mbcs_with_rtc[i])
+			{
+				has_rtc = true;
+				break;
+			}
+		}
+
+		set_file_ext(savename, "sav", FILENAME_MAX);
+
+		savefile = fopen(savename, "wb");
+		if (NULL != savefile)
+		{
+			fwrite(bus.ext_ram, 1, bus.cartridge_ram_size, savefile);
+		}
+		fclose(savefile);
+
+		if (has_rtc)
+		{
+			set_file_ext(savename, "rtc", FILENAME_MAX);
+			savefile = fopen(savename, "wb");
+			if (NULL != savefile)
+			{
+				
+			}
+			fclose(savefile);
+		}
+	}
+	return;
 }
 
 static inline void bus_dma_cpy(uint16_t dst, uint16_t src, uint16_t len)
@@ -251,6 +340,12 @@ static void bus_write_mbc(uint16_t addr, uint8_t val)
 {
 	switch (bus.cartridge_type)
 	{
+		case 0x01 ... 0x03:
+		{
+			bus_write_mbc1(addr, val);
+		}
+		break;
+
 		case 0x0F ... 0x13:
 		{
 			bus_write_mbc3(addr, val);
@@ -273,8 +368,78 @@ static void bus_write_mbc(uint16_t addr, uint8_t val)
 	return;
 }
 
+static void bus_write_mbc1(uint16_t addr, uint8_t val)
+{
+	static uint8_t banking_mode = 0;
+
+	// printf("%04x: val = %02x\n", addr, val);
+
+	switch (addr)
+	{
+		case 0x0000 ... 0x1FFF:
+		{
+			if (0x0A == (val & 0x0F))
+			{
+				bus.ext_ram_enabled = true;
+			}
+			else //if (0x00 == (val & 0x0F))
+			{
+				bus.ext_ram_enabled = false;
+			}
+		}
+		break;
+		
+		case 0x2000 ... 0x3FFF:
+		{
+			uint8_t msk = (bus.cartridge_rom_size >> 13) - 1;
+			msk =  (msk > 0x1f) ? 0x1f : msk;
+			if (0 == (val & 0x1F))
+			{
+				bus.rom_banksel = 1;
+			}
+			else
+			{
+				bus.rom_banksel = val & msk;
+			}
+		}
+		break;
+		
+		case 0x4000 ... 0x5FFF:
+		{
+			if (32768 == bus.cartridge_ram_size)
+			{
+				bus.ext_ram_banksel = val & 0x03;
+			}
+			else if ((1024 * 1024) <= bus.cartridge_rom_size)
+			{
+				bus.rom_banksel |= ((val & 0x03) << 5);
+			}
+		}
+		break;
+		
+		case 0x6000 ... 0x7FFF:
+		{
+			banking_mode = val & 1;
+		}
+		break;
+
+		default: break;
+	}
+
+	if (banking_mode)
+	{
+		bus.rom0_banksel = bus.rom_banksel & (0x03<<5);
+	}
+	else
+	{
+		bus.rom0_banksel = 0;
+	}
+
+	return;
+}
+
 static void bus_write_mbc3(uint16_t addr, uint8_t val)
-{	
+{
 	switch (addr)
 	{
 		case 0x0000 ... 0x1FFF:
@@ -435,7 +600,7 @@ uint8_t bus_get_memory(uint16_t addr)
 	{
 		case 0x0000 ... 0x3FFF:   // Permanently mapped ROM Bank
 		{
-			ret = rom[0][addr & 0x3FFF];
+			ret = rom[bus.rom0_banksel][addr & 0x3FFF];
 		}
 		break;
 
@@ -880,6 +1045,8 @@ bool bus_init_memory(const char *filename)
 		else
 		{
 			bus.cartridge_type = header.cartridge_type;
+			bus.cartridge_ram_size = bus_ram_size_from_header(&header);
+			bus.cartridge_rom_size = bus_rom_size_from_header(&header);
 			bus.dmg_mode = (0 == (header.GBC_flag & 0x80));
 		}
 	}
@@ -888,6 +1055,31 @@ bool bus_init_memory(const char *filename)
 	{
 		fread(rom, 1, fileSize, gbFile);
 		fclose(gbFile);
+	}
+
+	if (false != ret)
+	{
+		strncpy(cartridge_filename, filename, FILENAME_MAX-1);
+		cartridge_filename[FILENAME_MAX-1] = '\0';
+	}
+
+	if (false != ret)
+	{
+		char savename[FILENAME_MAX];
+		FILE *savefile;
+		strncpy(savename, filename, FILENAME_MAX-1);
+		set_file_ext(savename, "sav", FILENAME_MAX);
+		savefile = fopen(savename, "rb");
+		if (savefile)
+		{
+			fread(bus.ext_ram, 1, bus.cartridge_ram_size, savefile);
+		}
+		fclose(savefile);
+	}
+
+	if (false != ret)
+	{
+		atexit(save_sram_state);
 	}
 
 	return ret;
@@ -908,7 +1100,7 @@ int gbc_bus_set_internal_state(void)
 
 void bus_init(void)
 {
-	bus.wram_banksel = 0xF8;
+	bus.wram_banksel = 1;//0xF8;
 	bus.rom_banksel = 1;
 	bus.ext_ram_banksel = 0;
 	bus.ext_ram_enabled = false;

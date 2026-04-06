@@ -86,7 +86,22 @@ static void save_trace(void)
     if (f)
     {
         size_t idx = (0 == tb_idx) ? (TRACE_BUFFER_LEN - 1) : (tb_idx - 1);
-        size_t num_cycle_cnt_digits = (size_t) log10f((float)trace_data[idx].trace_data.cycle_cnt);
+        size_t num_cycle_cnt_digits;
+        {
+            size_t local_idx = idx;
+            for (int i = 0; i < TRACE_BUFFER_LEN; i++)
+            {
+                if (tt_opcode_e == trace_data[idx].type)
+                {
+                    num_cycle_cnt_digits  = (size_t) log10f((float)trace_data[local_idx].trace_data.cycle_cnt);
+                    break;
+                }
+                else
+                {
+                    local_idx = (0 == local_idx) ? (TRACE_BUFFER_LEN - 1) : (local_idx - 1);
+                }
+            }
+        }
         for (int i = 0; i < TRACE_BUFFER_LEN; i++)
         {
             size_t idx = (size_t)(tb_idx + i) % TRACE_BUFFER_LEN;
@@ -120,8 +135,9 @@ static void save_trace(void)
                 }
                 opcode_data[8] = '\0';
 
-                fprintf(f, "%.*llu, PC=%04x: %-8.8s, %-16s, SP=%04x, [ A F B C D E H L ] = [ %02x %02x %02x %02x %02x %02x %02x %02x ]\n",
-                    num_cycle_cnt_digits, td->cycle_cnt, td->pc, opcode_data, mnemonic, td->sp, td->a, td->f, td->b, td->c, td->d, td->e, td->h, td->l
+                fprintf(f, "%.*llu, PC=%04x: %-8.8s, %-16s, SP=%04x, [ A F B C D E H L ] = [ %02x %02x %02x %02x %02x %02x %02x %02x ], stack = [ %02x %02x %02x %02x (...)]\n",
+                    num_cycle_cnt_digits, td->cycle_cnt, td->pc, opcode_data, mnemonic, td->sp, td->a, td->f, td->b, td->c, td->d, td->e, td->h, td->l,
+                    td->stack[0], td->stack[1], td->stack[2], td->stack[3]
                 );
             }
         }

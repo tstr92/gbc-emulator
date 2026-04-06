@@ -189,7 +189,8 @@ typedef struct
     uint8_t cgb_palette;    // a value between 0 and 7
     uint8_t sprite_prio;    // on CGB this is the OAM index for the object and on DMG this doesn’t exist
     uint8_t bg_prio;        // holds the value of the OBJ-to-BG Priority bit
-    uint8_t oam_tile_index; // pixel priorization
+    uint8_t oam_tile_index; // cgb pixel priorization
+    uint8_t x_coord;        // dmg pixel priorization
 } pixel_t;
 
 typedef struct
@@ -470,7 +471,8 @@ void ppu_pixel_fetcher_do(void)
                     .sprite_prio    = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.priority,
                     .oam_tile_index = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].oam_idx,
                     .dmg_palette    = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.dmg_palette,
-                    .cgb_palette    = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.cgb_palette
+                    .cgb_palette    = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.cgb_palette,
+                    .x_coord        = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.x_pos
                 };
                 newPixels.pixels[newPixels.fill_level++] = pixel;
             }
@@ -486,7 +488,8 @@ void ppu_pixel_fetcher_do(void)
                     .sprite_prio = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.priority,
                     .oam_tile_index = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].oam_idx,
                     .dmg_palette    = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.dmg_palette,
-                    .cgb_palette    = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.cgb_palette
+                    .cgb_palette    = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.cgb_palette,
+                    .x_coord        = pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.x_pos
                 };
                 newPixels.pixels[newPixels.fill_level++] = pixel;
             }
@@ -501,7 +504,31 @@ void ppu_pixel_fetcher_do(void)
         {
             if ((i < newPixels.fill_level) && (i < oldPixels.fill_level))
             {
-                if (newPixels.pixels[i].oam_tile_index < oldPixels.pixels[i].oam_tile_index)
+                bool prioritize_new_object = false;
+                if (0 == oldPixels.pixels[i].color_id)
+                {
+                    prioritize_new_object = true;
+                }
+                else if (0 == newPixels.pixels[i].color_id)
+                {
+                    prioritize_new_object = false;
+                }
+                else if (bus_DMG_mode())
+                {
+                    if (newPixels.pixels[i].x_coord < oldPixels.pixels[i].x_coord)
+                    {
+                        prioritize_new_object = true;
+                    }
+                    else if (newPixels.pixels[i].x_coord == oldPixels.pixels[i].x_coord)
+                    {
+                        prioritize_new_object = (newPixels.pixels[i].oam_tile_index < oldPixels.pixels[i].oam_tile_index);
+                    }
+                }
+                else if (newPixels.pixels[i].oam_tile_index < oldPixels.pixels[i].oam_tile_index)
+                {
+                    prioritize_new_object = true;
+                }
+                if (prioritize_new_object)
                 {
                     ppu_pixel_fifo_push(&pixel_fetcher.obj_fifo, newPixels.pixels[i]);
                 }
