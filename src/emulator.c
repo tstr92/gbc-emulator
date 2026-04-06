@@ -16,6 +16,7 @@
  *  include files                                                      *
  *---------------------------------------------------------------------*/
 #include <stdio.h>
+#include <inttypes.h>
 
 #include "emulator.h"
 #include "bus.h"
@@ -89,8 +90,8 @@ void emulator_run(void)
 			uint32_t realworld_frames = (duration * 60) / 1000;
 			uint64_t cyccnt_8mhz = 8000 * duration;
 			printf("\n\n");
-			printf("Cycle-Count: %llu, elapsed time: %lums, Cycle-Count(8MHz): %llu, emulation_ccnt/real_ccnt=%llu\n", gbc_cpu_get_cycle_cnt(), duration, cyccnt_8mhz, 0==cyccnt_8mhz?0:gbc_cpu_get_cycle_cnt()/cyccnt_8mhz);
-			printf("emulation_frames: %lu, real_frames: %lu, emulation_frames/real_frames=%lu\n", ingame_frames, realworld_frames, 0==realworld_frames?0:ingame_frames/realworld_frames);
+			printf("Cycle-Count: %"PRIu64", elapsed time: %"PRIu32"ms, Cycle-Count(8MHz): %"PRIu64", emulation_ccnt/real_ccnt=%"PRIu64"\n", gbc_cpu_get_cycle_cnt(), duration, cyccnt_8mhz, 0==cyccnt_8mhz?0:gbc_cpu_get_cycle_cnt()/cyccnt_8mhz);
+			printf("emulation_frames: %"PRIu32", real_frames: %"PRIu32", emulation_frames/real_frames=%"PRIu32"\n", ingame_frames, realworld_frames, 0==realworld_frames?0:ingame_frames/realworld_frames);
 			printf("\nCPU Stopped!\n");
 			break;
 		}

@@ -16,7 +16,6 @@
  *---------------------------------------------------------------------*/
 #include <stdio.h>
 #include <stdlib.h>
-#include <io.h>
 
 #include "emulator.h"
 #include "bus.h"
@@ -117,8 +116,7 @@ typedef struct
 
 
 #define CARTRIDGE_HEADER_ADDR 0x100
-__attribute__((packed))
-typedef struct
+typedef struct __attribute__((packed))
 {
 	uint32_t entry_point;                        // 0x100 - 0x103
 	uint8_t nintendo_logo[48];                   // 0x104 - 0x133
@@ -151,7 +149,7 @@ typedef struct
 	uint16_t global_chksum;                      // 0x14E-0x14F Checksum of 0x0134–0x014C (sum of all rom-bytes except this chksum)
 } cartridge_header_t;
 #define CARTRIDGE_HEADER_SIZE sizeof(cartridge_header_t)
-
+_Static_assert(sizeof(cartridge_header_t) == 0x50, "sizeof(cartridge_header_t) must be 0x50");
 
 /*---------------------------------------------------------------------*
  *  external declarations                                              *
@@ -1023,8 +1021,9 @@ bool bus_init_memory(const char *filename)
 
 	if (false != ret)
 	{
-		int fd = _fileno(gbFile);
-		fileSize = _filelength(fd);
+		fseek(gbFile, 0, SEEK_END);
+		fileSize = ftell(gbFile);
+		fseek(gbFile, 0, SEEK_SET);
 		if ((CARTRIDGE_HEADER_ADDR + CARTRIDGE_HEADER_SIZE) > fileSize)
 		{
 			printf("Error: File too small.\n");

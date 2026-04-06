@@ -39,7 +39,7 @@ typedef struct
     uint32_t TIMA_PRESC_CNT;
     uint8_t TMA;
     uint8_t TAC;
-} timer_t;
+} tim_t;
 
 
 /*---------------------------------------------------------------------*
@@ -53,7 +53,7 @@ typedef struct
 /*---------------------------------------------------------------------*
  *  private data                                                       *
  *---------------------------------------------------------------------*/
-timer_t timer = 
+tim_t timer = 
 {
     .TIMA           = 0x00,
     .TMA            = 0x00,
@@ -179,13 +179,13 @@ void gbc_timer_set_memory(uint16_t addr, uint8_t val)
 
 void gbc_tim_write_internal_state(void)
 {
-	emulator_cb_write_to_save_file((uint8_t*) &timer, sizeof(timer_t), "tim");
+	emulator_cb_write_to_save_file((uint8_t*) &timer, sizeof(tim_t), "tim");
 	return;
 }
 
 int gbc_tim_set_internal_state(void)
 {
-	return emulator_cb_read_from_save_file((uint8_t*) &timer, sizeof(timer_t));
+	return emulator_cb_read_from_save_file((uint8_t*) &timer, sizeof(tim_t));
 }
 
 /*---------------------------------------------------------------------*
