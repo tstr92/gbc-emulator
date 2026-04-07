@@ -38,6 +38,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "emulator.h"
+
 /*---------------------------------------------------------------------*
  *  global definitions                                                 *
  *---------------------------------------------------------------------*/
@@ -61,7 +63,7 @@ void bus_tick(void);
 bool bus_DMG_mode(void);
 uint8_t bus_get_memory(uint16_t addr);
 void bus_set_memory(uint16_t addr, uint8_t val);
-bool bus_init_memory(const char *filename);
+int bus_init_memory(uint8_t *rom, size_t rom_size, uint8_t *sram, size_t sram_size, rtc_t *p_rtc);
 int bus_load_game(char *fileName);
 
 void bus_stop_instr_cb(void);

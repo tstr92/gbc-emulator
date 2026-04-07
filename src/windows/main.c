@@ -103,6 +103,8 @@ static Uint32 gFrameDrawEvent = (Uint32) -1;
 #if (0 != DEBUG)
 static volatile uint32_t gWasteTime = 0;
 #endif
+static char gSramFileName[FILENAME_MAX + 10] = "";
+static char gRtcFileName[FILENAME_MAX + 10] = "";
 
 static key_t keys[8] =
 {
@@ -595,7 +597,7 @@ uint8_t emulator_get_speed(void)
 }
 
 
-void emulator_cb_write_to_save_file(uint8_t *data, size_t size, char *name)
+void emulator_cb_write_to_save_file(const uint8_t *data, size_t size, char *name)
 {
     if (gSaveFile && gSaveFileLog)
     {
@@ -623,6 +625,28 @@ int emulator_cb_read_from_save_file(uint8_t *data, size_t size)
         }
     }
     return ret;
+}
+
+void emulator_cb_save_sram(const uint8_t *data, size_t length)
+{
+    FILE *f;
+    f = fopen(gSramFileName, "wb");
+    if (f)
+    {
+        fwrite(data, 1, length, f);
+        fclose(f);
+    }
+}
+
+void emulator_cb_save_rtc(const rtc_t *p_rtc)
+{
+    FILE *f;
+    f = fopen(gRtcFileName, "wb");
+    if (f)
+    {
+        fwrite(p_rtc, 1, sizeof(rtc_t), f);
+        fclose(f);
+    }
 }
 
 void emulator_tick_cb(void)
@@ -657,10 +681,117 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    if (emulator_load_game(argv[1]))
     {
-        fprintf(stderr, "Error: Could not initialize emulator.\n");
-        return 1;
+        int error = 0;
+        FILE * f;
+        long romSize, ramSize, rtcSize;
+        uint8_t *rom = NULL;
+        uint8_t *ram = NULL;
+        uint8_t *raw_rtc = NULL;
+        rtc_t rtc;
+        rtc_t *p_rtc = NULL;
+
+        f = fopen(argv[1], "rb");
+        error = (f == NULL);
+        if (!error)
+        {
+            printf("'%s' found!\n", argv[1]);
+            fseek(f, 0, SEEK_END);
+            romSize = ftell(f);
+            error  = (-1 == romSize);
+        }
+        if (!error)
+        {
+            rom = malloc(romSize);
+            error = (rom == NULL);
+        }
+        if (!error)
+        {
+            fseek(f, 0, SEEK_SET);
+            error = (romSize != fread(rom, 1, romSize, f));
+        }
+        if (!error)
+        {
+            {
+                int len, i;
+                len = strnlen(argv[1], FILENAME_MAX);
+                strncpy(gSramFileName, argv[1], sizeof(gSramFileName) - 1);
+                strncpy(gRtcFileName, argv[1], sizeof(gRtcFileName) - 1);
+                for (i = (len - 1); 0 <= i; i--)
+                {
+                    if ('.' == argv[1][i])
+                    {
+                        break;
+                    }
+                }
+                memcpy(&gSramFileName[i], ".sav", 4);
+                memcpy(&gRtcFileName[i], ".rtc", 4);
+            }
+
+            f = fopen(gSramFileName, "rb");
+            if (f)
+            {
+                printf("'%s' found!\n", gSramFileName);
+                fseek(f, 0, SEEK_END);
+                ramSize = ftell(f);
+                if (-1 != ramSize)
+                {
+                    ram = malloc(romSize);
+                    if (ram)
+                    {
+                        fseek(f, 0, SEEK_SET);
+                        fread(ram, 1, ramSize, f);
+                    }
+                }
+                fclose(f);
+            }
+
+            f = fopen(gRtcFileName, "rb");
+            if (f)
+            {
+                printf("'%s' found!\n", gRtcFileName);
+                fseek(f, 0, SEEK_END);
+                rtcSize = ftell(f);
+                if (sizeof(rtc_t) == rtcSize)
+                {
+                    raw_rtc = malloc(romSize);
+                    if (raw_rtc)
+                    {
+                        fseek(f, 0, SEEK_SET);
+                        if (rtcSize == fread(raw_rtc, 1, rtcSize, f))
+                        {
+                            memcpy(&rtc, raw_rtc, sizeof(rtc_t));
+                            p_rtc = &rtc;
+                        }
+                    }
+                }
+                fclose(f);
+            }
+        }
+        if (!error)
+        {
+            error = emulator_load_game(rom, romSize, ram, ramSize, p_rtc);
+        }
+        if (rom)
+        {
+            free(rom);
+            rom = NULL;
+        }
+        if (ram)
+        {
+            free(ram);
+            ram = NULL;
+        }
+        if (raw_rtc)
+        {
+            free(raw_rtc);
+            raw_rtc = NULL;
+        }
+        if (error)
+        {
+            fprintf(stderr, "Error: Could not initialize emulator.\n");
+            return 1;
+        }
     }
 
     if (2 < argc)

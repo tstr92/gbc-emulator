@@ -32,6 +32,17 @@
 #define GBC_JOYPAD_UP     (1<<6)
 #define GBC_JOYPAD_DOWN   (1<<7)
 
+typedef struct
+{
+	uint32_t rtc_ticker;
+	uint8_t seconds;
+	uint8_t minutes;
+	uint8_t hours;
+	uint8_t days_low;
+	uint8_t days_hi_ctrl;
+	uint8_t latch[5];
+} rtc_t;
+
 /*---------------------------------------------------------------------*
  *  type declarations                                                  *
  *---------------------------------------------------------------------*/
@@ -39,7 +50,7 @@
 /*---------------------------------------------------------------------*
  *  function prototypes                                                *
  *---------------------------------------------------------------------*/
-int emulator_load_game(char *fileName);
+int emulator_load_game(uint8_t *rom, size_t rom_size, uint8_t *sram, size_t sram_size, rtc_t *p_rtc);
 void emulator_run(void);
 void emulator_wait_for_data_collection(void);
 void emulator_get_audio_data(uint8_t *ch_r, uint8_t *ch_l, size_t *num_samples);
@@ -53,8 +64,11 @@ int emulator_load_save_file(void);
 
 /* 
  */
-void emulator_cb_write_to_save_file(uint8_t *data, size_t size, char *name);
+void emulator_cb_write_to_save_file(const uint8_t *data, size_t size, char *name);
 int emulator_cb_read_from_save_file(uint8_t *data, size_t size);
+void emulator_cb_save_sram(const uint8_t *data, size_t length);
+void emulator_cb_save_rtc(const rtc_t *p_rtc);
+
 void emulator_tick_cb(void);
 
 /* Callback-Function that reads the current Button-states.

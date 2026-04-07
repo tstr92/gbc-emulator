@@ -49,18 +49,6 @@
 
 #define RTC_BIT_HALT              (1<<6)
 #define RTC_BIT_DAY_COUNTER_CARRY (1<<7)
-
-typedef struct
-{
-	uint32_t rtc_ticker;
-	uint8_t seconds;
-	uint8_t minutes;
-	uint8_t hours;
-	uint8_t days_low;
-	uint8_t days_hi_ctrl;
-	uint8_t latch[5];
-} rtc_t;
-
 typedef struct
 {
 	uint8_t wram_banksel;
@@ -164,14 +152,13 @@ _Static_assert(sizeof(cartridge_header_t) == 0x50, "sizeof(cartridge_header_t) m
  *---------------------------------------------------------------------*/
 static bus_t bus;
 static uint8_t rom[512][16*1024];
-static char cartridge_filename[FILENAME_MAX] = "\0";
 
 /*---------------------------------------------------------------------*
  *  private function declarations                                      *
  *---------------------------------------------------------------------*/
 static int bus_check_cartridge_header(cartridge_header_t *pHeader);
 static void set_file_ext(char *fname, char *ext, size_t buffer_len);
-static void save_sram_state(void);
+static void bus_save_sram_and_rtc(void);
 static inline void bus_dma_cpy(uint16_t dst, uint16_t src, uint16_t len);
 static void bus_oam_dma_tick(void);
 static void bus_write_mbc(uint16_t addr, uint8_t val);
@@ -239,74 +226,27 @@ int bus_check_cartridge_header(cartridge_header_t *pHeader)
 	return 1;
 }
 
-static void set_file_ext(char *fname, char *ext, size_t buffer_len)
+static void bus_save_sram_and_rtc(void)
 {
-	size_t fname_len;
-	int extension_offset;
-	
-	fname_len = strnlen(fname, buffer_len - 1);
-	extension_offset = fname_len;
-	for (int i = fname_len - 1; i > 0; i--)
+	const uint8_t mbcs_with_rtc[] = {0x0F, 0x10, 0x11, 0x12, 0x13};
+	bool has_rtc = false;
+
+	emulator_cb_save_sram(&bus.ext_ram[0][0], sizeof(bus.ext_ram));
+
+	for (int i = 0; i < sizeof(mbcs_with_rtc)/sizeof(mbcs_with_rtc[0]); i++)
 	{
-		bool break_loop = false;
-		switch (cartridge_filename[i])
+		if (bus.cartridge_type == mbcs_with_rtc[i])
 		{
-			case '.': extension_offset = i; break_loop = true; break;
-			case '\\':
-			case '/': break_loop = true; break;
-			default: break;
-		}
-		if (break_loop)
-		{
+			has_rtc = true;
 			break;
 		}
 	}
-	snprintf(&fname[extension_offset], buffer_len - extension_offset, ".sav");
-	fname[buffer_len-1] = '\0';
-	return;
-}
 
-static void save_sram_state(void)
-{
-	/* did we load something before? */
-	if ('\0' != cartridge_filename[0])
+	if (has_rtc)
 	{
-		const uint8_t mbcs_with_rtc[] = {0x0F, 0x10, 0x11, 0x12, 0x13};
-		bool has_rtc = false;
-		char savename[FILENAME_MAX];
-		FILE * savefile;
-
-		strncpy(savename, cartridge_filename, FILENAME_MAX-1);
-
-		for (int i = 0; i < sizeof(mbcs_with_rtc)/sizeof(mbcs_with_rtc[0]); i++)
-		{
-			if (bus.cartridge_type == mbcs_with_rtc[i])
-			{
-				has_rtc = true;
-				break;
-			}
-		}
-
-		set_file_ext(savename, "sav", FILENAME_MAX);
-
-		savefile = fopen(savename, "wb");
-		if (NULL != savefile)
-		{
-			fwrite(bus.ext_ram, 1, bus.cartridge_ram_size, savefile);
-		}
-		fclose(savefile);
-
-		if (has_rtc)
-		{
-			set_file_ext(savename, "rtc", FILENAME_MAX);
-			savefile = fopen(savename, "wb");
-			if (NULL != savefile)
-			{
-				
-			}
-			fclose(savefile);
-		}
+		emulator_cb_save_rtc(&bus.rtc);
 	}
+
 	return;
 }
 
@@ -993,53 +933,27 @@ void bus_set_memory(uint16_t addr, uint8_t val)
 	// debug_printf("\nwrote %02x to %04x\n", val, addr);
 }
 
-bool bus_init_memory(const char *filename)
+int bus_init_memory(uint8_t *p_rom, size_t rom_size, uint8_t *p_sram, size_t sram_size, rtc_t *p_rtc)
 {
-	bool ret;
-	FILE *gbFile;
-	size_t fileSize;
+	int error;
 	cartridge_header_t header;
 
-	ret = true;
+	error = 0;
 
-	if (false != ret)
+	if (!error)
 	{
-		if (NULL == filename)
+		if ((NULL == p_rom) || ((CARTRIDGE_HEADER_ADDR + CARTRIDGE_HEADER_SIZE) > rom_size))
 		{
-			ret = false;
+			error = !0;
 		}
 	}
-
-	if (false != ret)
+	if (!error)
 	{
-		gbFile = fopen(filename, "rb");
-		if (NULL == gbFile)
-		{
-			ret = false;
-		}
-	}
-
-	if (false != ret)
-	{
-		fseek(gbFile, 0, SEEK_END);
-		fileSize = ftell(gbFile);
-		fseek(gbFile, 0, SEEK_SET);
-		if ((CARTRIDGE_HEADER_ADDR + CARTRIDGE_HEADER_SIZE) > fileSize)
-		{
-			printf("Error: File too small.\n");
-			ret = false;
-		}
-	}
-
-	if (false != ret)
-	{
-		fseek(gbFile, CARTRIDGE_HEADER_ADDR, SEEK_SET);
-		fread(&header, 1, CARTRIDGE_HEADER_SIZE, gbFile);
-		fseek(gbFile, 0, SEEK_SET);
+		memcpy(&header, &p_rom[CARTRIDGE_HEADER_ADDR], CARTRIDGE_HEADER_SIZE);
 		if (false == bus_check_cartridge_header(&header))
 		{
 			printf("Error: Header Checksum mismatch.\n");
-			ret = false;
+			error = !0;
 		}
 		else
 		{
@@ -1050,38 +964,24 @@ bool bus_init_memory(const char *filename)
 		}
 	}
 
-	if (false != ret)
+	if (!error)
 	{
-		fread(rom, 1, fileSize, gbFile);
-		fclose(gbFile);
-	}
+		memcpy(rom, p_rom, rom_size);
 
-	if (false != ret)
-	{
-		strncpy(cartridge_filename, filename, FILENAME_MAX-1);
-		cartridge_filename[FILENAME_MAX-1] = '\0';
-	}
-
-	if (false != ret)
-	{
-		char savename[FILENAME_MAX];
-		FILE *savefile;
-		strncpy(savename, filename, FILENAME_MAX-1);
-		set_file_ext(savename, "sav", FILENAME_MAX);
-		savefile = fopen(savename, "rb");
-		if (savefile)
+		if (NULL != p_sram)
 		{
-			fread(bus.ext_ram, 1, bus.cartridge_ram_size, savefile);
+			memcpy(bus.ext_ram, p_sram, sram_size);
 		}
-		fclose(savefile);
+
+		if (NULL != p_rtc)
+		{
+			memcpy(&bus.rtc, p_rtc, sizeof(rtc_t));
+		}
+
+		atexit(bus_save_sram_and_rtc);
 	}
 
-	if (false != ret)
-	{
-		atexit(save_sram_state);
-	}
-
-	return ret;
+	return error;
 }
 
 

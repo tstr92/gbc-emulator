@@ -54,21 +54,20 @@
 /*---------------------------------------------------------------------*
  *  public functions                                                   *
  *---------------------------------------------------------------------*/
-int emulator_load_game(char *fileName)
+int emulator_load_game(uint8_t *rom, size_t rom_size, uint8_t *sram, size_t sram_size, rtc_t *p_rtc)
 {
-	if (!bus_init_memory(fileName))
+	int error = bus_init_memory(rom, rom_size, sram, sram_size, p_rtc);
+
+	if (0 == error)
 	{
-		printf("Error: Could not open file '%s'.\n", fileName);
-		return 1;
+		gbc_cpu_init();
+		bus_init();
+		gbc_apu_init();
+		gbc_ppu_init();
+		trace_init();
 	}
 
-	gbc_cpu_init();
-	bus_init();
-	gbc_apu_init();
-	gbc_ppu_init();
-	trace_init();
-
-	return 0;
+	return error;
 }
 
 void emulator_run(void)
