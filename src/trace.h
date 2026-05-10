@@ -14,7 +14,7 @@
 #ifndef _TRACE_H_
 #define _TRACE_H_
 
-#if (0 != DEBUG)
+#if (0 != ACTIVATE_TRACE)
 
 /*---------------------------------------------------------------------*
  *  additional includes                                                *

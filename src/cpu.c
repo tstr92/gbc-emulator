@@ -54,7 +54,7 @@
 #define ISR_VECTOR_SERIAL        0x0058
 #define ISR_VECTOR_JOYPAD        0x0060
 
-#if (0 != DEBUG)
+#if (0 != ACTIVATE_TRACE)
 #define TRACE(_opcode_size)                                    \
 {                                                              \
 	trace_data_t trace_data =                                  \
@@ -1774,11 +1774,11 @@ static void cpu_print_state(void)
 	e = cpu.de.e;
 	h = cpu.hl.h;
 	l = cpu.hl.l;
-	printf("\n");
-	printf("PC: %04x (Next Opcode = %02x), SP: %04x\n", cpu.pc, bus_get_memory(cpu.pc), cpu.sp);
-	printf("Z: %d, N: %d, H: %d, C: %d\n", zf, nf, hf, cf);
-	printf("A: %02x, B: %02x, C: %02x, D: %02x, E: %02x, H: %02x, L: %02x\n", a, b, c, d, e, h, l);
-	printf("BC: %04x, DE: %04x, HL: %04x\n", cpu.bc.bc, cpu.de.de, cpu.hl.hl);
+	debug_printf("\n");
+	debug_printf("PC: %04x (Next Opcode = %02x), SP: %04x\n", cpu.pc, bus_get_memory(cpu.pc), cpu.sp);
+	debug_printf("Z: %d, N: %d, H: %d, C: %d\n", zf, nf, hf, cf);
+	debug_printf("A: %02x, B: %02x, C: %02x, D: %02x, E: %02x, H: %02x, L: %02x\n", a, b, c, d, e, h, l);
+	debug_printf("BC: %04x, DE: %04x, HL: %04x\n", cpu.bc.bc, cpu.de.de, cpu.hl.hl);
 }
 
 static uint8_t cpu_handle_interrupt(void)

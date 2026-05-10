@@ -152,6 +152,8 @@ _Static_assert(sizeof(cartridge_header_t) == 0x50, "sizeof(cartridge_header_t) m
  *---------------------------------------------------------------------*/
 static bus_t bus;
 static uint8_t rom[512][16*1024];
+static uint8_t mbc1_banking_mode;
+static uint8_t rtc_latch;
 
 /*---------------------------------------------------------------------*
  *  private function declarations                                      *
@@ -298,7 +300,7 @@ static void bus_write_mbc(uint16_t addr, uint8_t val)
 
 		default:
 		{
-			printf("unknown cartridge_type %02x (w %02x -> %04x).\n", bus.cartridge_type, val, addr);
+			debug_printf("unknown cartridge_type %02x (w %02x -> %04x).\n", bus.cartridge_type, val, addr);
 		}
 		break;
 	}
@@ -308,9 +310,7 @@ static void bus_write_mbc(uint16_t addr, uint8_t val)
 
 static void bus_write_mbc1(uint16_t addr, uint8_t val)
 {
-	static uint8_t banking_mode = 0;
-
-	// printf("%04x: val = %02x\n", addr, val);
+	// debug_printf("%04x: val = %02x\n", addr, val);
 
 	switch (addr)
 	{
@@ -357,14 +357,14 @@ static void bus_write_mbc1(uint16_t addr, uint8_t val)
 		
 		case 0x6000 ... 0x7FFF:
 		{
-			banking_mode = val & 1;
+			mbc1_banking_mode = val & 1;
 		}
 		break;
 
 		default: break;
 	}
 
-	if (banking_mode)
+	if (mbc1_banking_mode)
 	{
 		bus.rom0_banksel = bus.rom_banksel & (0x03<<5);
 	}
@@ -425,7 +425,7 @@ static void bus_write_mbc3(uint16_t addr, uint8_t val)
 
 				default:
 				{
-					printf("Cannot handle MBC3 memory access (w %02x -> %04x).\n", val, addr);
+					debug_printf("Cannot handle MBC3 memory access (w %02x -> %04x).\n", val, addr);
 				}
 				break;
 			}
@@ -434,8 +434,7 @@ static void bus_write_mbc3(uint16_t addr, uint8_t val)
 		
 		case 0x6000 ... 0x7FFF:
 		{
-			static uint8_t latch = 1;
-			if (0 == latch && 1 == val)
+			if (0 == rtc_latch && 1 == val)
 			{
 				bus.rtc.latch[0] = bus.rtc.seconds;
 				bus.rtc.latch[1] = bus.rtc.minutes;
@@ -443,7 +442,7 @@ static void bus_write_mbc3(uint16_t addr, uint8_t val)
 				bus.rtc.latch[3] = bus.rtc.days_low;
 				bus.rtc.latch[4] = bus.rtc.days_hi_ctrl;
 			}
-			latch = val;
+			rtc_latch = val;
 		}
 		break;
 
@@ -561,7 +560,7 @@ uint8_t bus_get_memory(uint16_t addr)
 					case 0x0A: ret = bus.rtc.latch[2]; break; /* hours        */
 					case 0x0B: ret = bus.rtc.latch[3]; break; /* days_low     */
 					case 0x0C: ret = bus.rtc.latch[4]; break; /* days_hi_ctrl */
-					default: printf("default case read rtc_access\n"); break;
+					default: debug_printf("default case read rtc_access\n"); break;
 					}
 				}
 				else
@@ -599,7 +598,7 @@ uint8_t bus_get_memory(uint16_t addr)
 
 		case 0xff4c:
 		{
-			printf("todo k0\n");
+			debug_printf("todo k0\n");
 			ret = 0;
 		}
 		break;
@@ -683,7 +682,7 @@ uint8_t bus_get_memory(uint16_t addr)
 
 		case RP:
 		{
-			printf("read [RP]\n");
+			debug_printf("read [RP]\n");
 			ret = bus.rp | 0x02; // currently not receiving
 		}
 		break;
@@ -732,7 +731,7 @@ void bus_set_memory(uint16_t addr, uint8_t val)
 					case 0x0A: bus.rtc.hours        = val; break;
 					case 0x0B: bus.rtc.days_low     = val; break;
 					case 0x0C: bus.rtc.days_hi_ctrl = val; break;
-					default: printf("default case write rtc_access\n"); break;
+					default: debug_printf("default case write rtc_access\n"); break;
 					}
 				}
 				else
@@ -780,14 +779,14 @@ void bus_set_memory(uint16_t addr, uint8_t val)
 
 		case 0xFF51: // VRAM DMA SRC High
 		{
-			// printf("[0x%04x] = %02x\n", addr, val);
+			// debug_printf("[0x%04x] = %02x\n", addr, val);
 			bus.vram_dma.src &= 0x00FF;
 			bus.vram_dma.src |= ((uint16_t) val) << 8;
 		}
 		break;
 		case 0xFF52: // VRAM DMA SRC Low
 		{
-			// printf("[0x%04x] = %02x\n", addr, val);
+			// debug_printf("[0x%04x] = %02x\n", addr, val);
 			/* "The four lower bits of this address will be ignored and treated as 0." */
 			bus.vram_dma.src &= 0xFF00;
 			bus.vram_dma.src |= val & 0xF0;
@@ -795,7 +794,7 @@ void bus_set_memory(uint16_t addr, uint8_t val)
 		break;
 		case 0xFF53: // VRAM DMA DST High
 		{
-			// printf("[0x%04x] = %02x\n", addr, val);
+			// debug_printf("[0x%04x] = %02x\n", addr, val);
 			/* "Only bits 12-4 are respected; others are ignored." */
 			bus.vram_dma.dst &= 0x00FF;
 			bus.vram_dma.dst |= (((uint16_t) val & 0x1F) << 8) | 0x8000;
@@ -803,7 +802,7 @@ void bus_set_memory(uint16_t addr, uint8_t val)
 		break;
 		case 0xFF54: // VRAM DMA DST Low
 		{
-			// printf("[0x%04x] = %02x\n", addr, val);
+			// debug_printf("[0x%04x] = %02x\n", addr, val);
 			/* "The four lower bits of this address will be ignored and treated as 0." */
 			bus.vram_dma.dst &= 0xFF00;
 			bus.vram_dma.dst |= val & 0xF0;
@@ -811,7 +810,7 @@ void bus_set_memory(uint16_t addr, uint8_t val)
 		break;
 		case 0xFF55: // VRAM DMA Length/Mode/Start
 		{
-			// printf("[0x%04x] = %02x\n", addr, val);
+			// debug_printf("[0x%04x] = %02x\n", addr, val);
 			if (!bus.dmg_mode)
 			{
 				if ((bus.vram_dma.active) && (HBlank_dma == bus.vram_dma.mode) && (!(val & VRAM_DMA_HBLANK_MSK)))
@@ -839,7 +838,7 @@ void bus_set_memory(uint16_t addr, uint8_t val)
 						gbc_cpu_stall(num_stall_cycles);
 						bus.vram_dma.active = false;
 					}
-					// printf("%sDMA Go! %d Bytes %04x -> %04X\n", (bus.vram_dma.mode == HBlank_dma) ? "Hblank" : "GP", bus.vram_dma.len, bus.vram_dma.src, bus.vram_dma.dst);
+					// debug_printf("%sDMA Go! %d Bytes %04x -> %04X\n", (bus.vram_dma.mode == HBlank_dma) ? "Hblank" : "GP", bus.vram_dma.len, bus.vram_dma.src, bus.vram_dma.dst);
 				}
 			}
 		}
@@ -881,7 +880,7 @@ void bus_set_memory(uint16_t addr, uint8_t val)
 
 		case RP:
 			bus.rp = val;
-			printf("[RP] = %02x\n", val);
+			debug_printf("[RP] = %02x\n", val);
 		break;
 
 		case SVBK:
@@ -914,7 +913,7 @@ void bus_set_memory(uint16_t addr, uint8_t val)
 			// if (('\n' == val) || (UART_BUFFER_SIZE <= uart_buffer_index))
 			// {
 			// 	uart_buffer_index = 0;
-			// 	printf(uart_buffer);
+			// 	debug_printf(uart_buffer);
 			// 	fflush(stdout);
 			// }
 			// #undef UART_BUFFER_SIZE
@@ -940,6 +939,11 @@ int bus_init_memory(uint8_t *p_rom, size_t rom_size, uint8_t *p_sram, size_t sra
 
 	error = 0;
 
+	memset(&bus, 0, sizeof(bus));
+	memset(rom, 0, sizeof(rom));
+	mbc1_banking_mode = 0;
+	rtc_latch = 1;
+
 	if (!error)
 	{
 		if ((NULL == p_rom) || ((CARTRIDGE_HEADER_ADDR + CARTRIDGE_HEADER_SIZE) > rom_size))
@@ -952,7 +956,7 @@ int bus_init_memory(uint8_t *p_rom, size_t rom_size, uint8_t *p_sram, size_t sra
 		memcpy(&header, &p_rom[CARTRIDGE_HEADER_ADDR], CARTRIDGE_HEADER_SIZE);
 		if (false == bus_check_cartridge_header(&header))
 		{
-			printf("Error: Header Checksum mismatch.\n");
+			debug_printf("Error: Header Checksum mismatch.\n");
 			error = !0;
 		}
 		else
@@ -970,7 +974,7 @@ int bus_init_memory(uint8_t *p_rom, size_t rom_size, uint8_t *p_sram, size_t sra
 
 		if (NULL != p_sram)
 		{
-			memcpy(bus.ext_ram, p_sram, sram_size);
+			memcpy(&bus.ext_ram[0][0], p_sram, sram_size);
 		}
 
 		if (NULL != p_rtc)
@@ -1061,7 +1065,7 @@ bool bus_DMG_mode(void)
 
 void bus_stop_instr_cb(void)
 {
-	printf("stop!\n");
+	debug_printf("stop!\n");
 	if (bus.dmg_mode && (bus.key1 & KEY1_SWITCH_ARMED))
 	{
 		bus.key1 ^= KEY1_DOUBLE_SPEED;

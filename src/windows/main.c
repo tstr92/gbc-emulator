@@ -21,6 +21,7 @@
 #include <stdbool.h>
 #include <math.h>
 #include <time.h>
+#include "debug.h"
 #include "emulator.h"
 #include "ppu_debug.h"
 
@@ -40,13 +41,6 @@
 
 #define SAMPLE_RATE 32768
 #define BUFFER_SIZE 550
-
-#define USE_PRINTF 1
-#if (0 != USE_PRINTF)
-#define debug_printf(...) printf(__VA_ARGS__)
-#else
-#define debug_printf(...) do {} while (0)
-#endif
 
 typedef struct
 {
@@ -173,7 +167,7 @@ static void audio_callback(void* userdata, Uint8* stream, int len)
     SDL_LockMutex(gEmulatorDataMutex);
     if (0 != gEmulatorDataCollected)
     {
-        printf("audio sampling error\n");
+        debug_printf("audio sampling error\n");
     }
     gEmulatorDataCollected = 1;
     SDL_CondSignal(gEmulatorDataCond);  // Signal the waiting thread
@@ -554,7 +548,7 @@ static int get_time_string(char *str, size_t size)
 /*---------------------------------------------------------------------*
  *  Emulator Callbacks                                                 *
  *---------------------------------------------------------------------*/
-void emulator_wait_for_data_collection(void)
+void emulator_cb_audio_ready(void)
 {
     // return;
     SDL_LockMutex(gEmulatorDataMutex);
@@ -695,7 +689,7 @@ int main(int argc, char* argv[])
         error = (f == NULL);
         if (!error)
         {
-            printf("'%s' found!\n", argv[1]);
+            debug_printf("'%s' found!\n", argv[1]);
             fseek(f, 0, SEEK_END);
             romSize = ftell(f);
             error  = (-1 == romSize);
@@ -731,12 +725,12 @@ int main(int argc, char* argv[])
             f = fopen(gSramFileName, "rb");
             if (f)
             {
-                printf("'%s' found!\n", gSramFileName);
+                debug_printf("'%s' found!\n", gSramFileName);
                 fseek(f, 0, SEEK_END);
                 ramSize = ftell(f);
                 if (-1 != ramSize)
                 {
-                    ram = malloc(romSize);
+                    ram = malloc(ramSize);
                     if (ram)
                     {
                         fseek(f, 0, SEEK_SET);
@@ -749,12 +743,12 @@ int main(int argc, char* argv[])
             f = fopen(gRtcFileName, "rb");
             if (f)
             {
-                printf("'%s' found!\n", gRtcFileName);
+                debug_printf("'%s' found!\n", gRtcFileName);
                 fseek(f, 0, SEEK_END);
                 rtcSize = ftell(f);
                 if (sizeof(rtc_t) == rtcSize)
                 {
-                    raw_rtc = malloc(romSize);
+                    raw_rtc = malloc(rtcSize);
                     if (raw_rtc)
                     {
                         fseek(f, 0, SEEK_SET);

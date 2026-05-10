@@ -265,18 +265,6 @@ typedef struct
 
 } pixel_fetcher_t;
 
-typedef union
-{
-    uint32_t raw;
-    struct
-    {
-        uint8_t A;
-        uint8_t B;
-        uint8_t G;
-        uint8_t R;
-    };
-} screen_pixel_t;
-
 
 typedef union
 {
@@ -306,14 +294,14 @@ static vram_t vram[2];
 static uint8_t obj_cram[64];
 static uint8_t bg_cram[64];
 
-static screen_pixel_t screen0[144][160];
-static screen_pixel_t screen1[144][160];
-static screen_pixel_t *screen = (screen_pixel_t *) &screen0[0][0];
+static uint32_t screen0[144][160];
+static uint32_t screen1[144][160];
+static uint32_t *screen = (uint32_t *) &screen0[0][0];
 
 volatile bool ppu_bp = false;
 volatile uint8_t breakx, breaky;
 
-uint32_t dmg_palette[4] =
+uint32_t RGBA_Palette[4] = 
 {
     // 0xFFFFFFFF, 0xAAAAAAAA, 0x55555555, 0x00000000
     0xE0F8D000, 0x88C07000, 0x34685600, 0x08182000
@@ -322,6 +310,7 @@ uint32_t dmg_palette[4] =
     /* credit: https://lospec.com/palette-list/dmg-nso */
     // 0x8cad2800, 0x6c942100, 0x426b2900, 0x21423100
 };
+uint32_t dmg_palette[4];
 
 /*---------------------------------------------------------------------*
  *  private function declarations                                      *
@@ -782,6 +771,19 @@ void gbc_ppu_init(void)
     ppu.obp1 = 0xFF;
     ppu.vbk = 0xFE;
 
+    for (int i = 0; i < countof(RGBA_Palette); i++)
+    {
+        uint32_t r,g,b,a;
+        r = (RGBA_Palette[i] & 0xFF000000) >> 24;
+        g = (RGBA_Palette[i] & 0x00FF0000) >> 16;
+        b = (RGBA_Palette[i] & 0x0000FF00) >>  8;
+        a = (SET_ALPHA       & 0x000000FF) >>  0;
+        dmg_palette[i] = (r << PX_COL_OFFS_R) |
+                         (g << PX_COL_OFFS_G) |
+                         (b << PX_COL_OFFS_B) |
+                         (a << PX_COL_OFFS_A) ;
+        debug_printf("dmg_palette[%d]=0x%08x\n", i, dmg_palette[i]);
+    }
 
     return;
 }
@@ -897,22 +899,23 @@ void gbc_ppu_tick(void)
                         {
                             uint8_t id = (pixel.color_id & 0x03) * 2; // 0, 2, 4, 6
                             uint8_t color_index = (palette & (COLOR_ID_MSK << id)) >> id;
-                            screen[ppu.ly * 160 + ppu_state.lx].raw = dmg_palette[color_index];
+                            screen[ppu.ly * 160 + ppu_state.lx] = dmg_palette[color_index];
                         }
                         else
                         {
                             uint16_t color = ((uint16_t) cram[(pixel.cgb_palette << 3) + (pixel.color_id << 1) + 0]) << 0 |
-                                            ((uint16_t) cram[(pixel.cgb_palette << 3) + (pixel.color_id << 1) + 1]) << 8;
+                                             ((uint16_t) cram[(pixel.cgb_palette << 3) + (pixel.color_id << 1) + 1]) << 8;
                             
-                            screen[ppu.ly * 160 + ppu_state.lx].R = ((color & 0x001f) >>  0) << 3;
-                            screen[ppu.ly * 160 + ppu_state.lx].G = ((color & 0x03e0) >>  5) << 3;
-                            screen[ppu.ly * 160 + ppu_state.lx].B = ((color & 0x7c00) >> 10) << 3;
+                            screen[ppu.ly * 160 + ppu_state.lx] = ((((uint32_t) color & 0x001f) >>  0) << 3) << PX_COL_OFFS_R |
+                                                                  ((((uint32_t) color & 0x03e0) >>  5) << 3) << PX_COL_OFFS_G |
+                                                                  ((((uint32_t) color & 0x7c00) >> 10) << 3) << PX_COL_OFFS_B |
+                                                                  ((uint32_t) (SET_ALPHA & 0xff))            << PX_COL_OFFS_A ;
                             
 #if (0 != DEBUG_SHOW_WINDOW)
                             /* draw green frame around window */
                             if ((ppu.lcdc & LCDC_WINDOW_EN) && (((ppu.wx - 7) == ppu_state.lx) || (((ppu.wx - 7) <= ppu_state.lx) && (ppu.ly == ppu.wy))))
                             {
-                                screen[ppu.ly * 160 + ppu_state.lx] = (screen_pixel_t) { .G = 0xff };
+                                screen[ppu.ly * 160 + ppu_state.lx] = ((uint32_t) 0xFF) << PX_COL_OFFS_G;
                             }
 #endif
                         }
@@ -1277,7 +1280,7 @@ void gbc_ppu_set_memory(uint16_t addr, uint8_t val)
 
         case OPRI:
         {
-            printf("todo opri\n");
+            debug_printf("todo opri\n");
             ppu.opri = val;
         }
         break;

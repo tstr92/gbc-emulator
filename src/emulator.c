@@ -16,6 +16,7 @@
  *  include files                                                      *
  *---------------------------------------------------------------------*/
 #include <stdio.h>
+#include <stdbool.h>
 #include <inttypes.h>
 
 #include "emulator.h"
@@ -42,6 +43,7 @@
 /*---------------------------------------------------------------------*
  *  private data                                                       *
  *---------------------------------------------------------------------*/
+static bool run = true;
 
 /*---------------------------------------------------------------------*
  *  private function declarations                                      *
@@ -67,6 +69,8 @@ int emulator_load_game(uint8_t *rom, size_t rom_size, uint8_t *sram, size_t sram
 		trace_init();
 	}
 
+	debug_printf("emulator_load_game returned %d\n", error);
+
 	return error;
 }
 
@@ -77,7 +81,7 @@ void emulator_run(void)
 
 	start = platform_getSysTick_ms();
 
-	for (;;)
+	while(run)
 	{
 		bus_tick();
 		emulator_tick_cb();
@@ -88,10 +92,10 @@ void emulator_run(void)
 			uint32_t ingame_frames = gbc_cpu_get_cycle_cnt() / 140448;
 			uint32_t realworld_frames = (duration * 60) / 1000;
 			uint64_t cyccnt_8mhz = 8000 * duration;
-			printf("\n\n");
-			printf("Cycle-Count: %"PRIu64", elapsed time: %"PRIu32"ms, Cycle-Count(8MHz): %"PRIu64", emulation_ccnt/real_ccnt=%"PRIu64"\n", gbc_cpu_get_cycle_cnt(), duration, cyccnt_8mhz, 0==cyccnt_8mhz?0:gbc_cpu_get_cycle_cnt()/cyccnt_8mhz);
-			printf("emulation_frames: %"PRIu32", real_frames: %"PRIu32", emulation_frames/real_frames=%"PRIu32"\n", ingame_frames, realworld_frames, 0==realworld_frames?0:ingame_frames/realworld_frames);
-			printf("\nCPU Stopped!\n");
+			debug_printf("\n\n");
+			debug_printf("Cycle-Count: %"PRIu64", elapsed time: %"PRIu32"ms, Cycle-Count(8MHz): %"PRIu64", emulation_ccnt/real_ccnt=%"PRIu64"\n", gbc_cpu_get_cycle_cnt(), duration, cyccnt_8mhz, 0==cyccnt_8mhz?0:gbc_cpu_get_cycle_cnt()/cyccnt_8mhz);
+			debug_printf("emulation_frames: %"PRIu32", real_frames: %"PRIu32", emulation_frames/real_frames=%"PRIu32"\n", ingame_frames, realworld_frames, 0==realworld_frames?0:ingame_frames/realworld_frames);
+			debug_printf("\nCPU Stopped!\n");
 			break;
 		}
 	}
@@ -137,6 +141,11 @@ int emulator_load_save_file(void)
 	}
 
 	return ret;
+}
+
+void emulator_stop(void)
+{
+	run = false;
 }
 
 /*---------------------------------------------------------------------*

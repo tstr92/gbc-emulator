@@ -25,13 +25,18 @@
 #define DBG_ERROR() printf("Error: %s:%d\n", __FUNCTION__, __LINE__)
 
 #if (0 < DEBUG)
-#define debug_printf(...) printf(__VA_ARGS__)
+    #if TARGET_WINDOWS
+        #define debug_printf(...) printf(__VA_ARGS__)
+    #elif TARGET_ANDROID
+        extern int android_printf(const char *fmt, ...);
+        #define debug_printf(...) android_printf(__VA_ARGS__)
+    #endif
 #else
-#define debug_printf(...) do {} while (0)
+    #define debug_printf(...) do {} while (0)
 #endif
 
 #define MIN_DEBUG_LEVEL 0
-#define debug_print_level(_level, ...) if (_level >= MIN_DEBUG_LEVEL) { printf(__VA_ARGS__); }
+#define debug_print_level(_level, ...) if (_level >= MIN_DEBUG_LEVEL) { debug_printf(__VA_ARGS__); }
 
 /*---------------------------------------------------------------------*
  *  type declarations                                                  *

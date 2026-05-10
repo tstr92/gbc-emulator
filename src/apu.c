@@ -108,8 +108,6 @@
 #define CH123_PERIOD_OVERFLOW          0x800
 #define CH12_LENGTH_TIMER_OVERFLOW     64
 
-#define MAX_NUM_SAMPLES 550
-
 #define DC_PATTERN_12_5 (0b00000001)
 #define DC_PATTERN_25_0 (0b00000011)
 #define DC_PATTERN_50_0 (0b00001111)
@@ -141,8 +139,8 @@ typedef struct
 
     struct
     {
-        uint8_t right[MAX_NUM_SAMPLES];
-        uint8_t left[MAX_NUM_SAMPLES];
+        uint8_t right[NUM_AUDIO_SAMPLES_PER_FRAME];
+        uint8_t left[NUM_AUDIO_SAMPLES_PER_FRAME];
         uint32_t index;
     } stereo_data;
     
@@ -629,9 +627,9 @@ void gbc_apu_tick(void)
 
         apu.stereo_data.right[apu.stereo_data.index] = apu_high_pass_filter(right, &cap_r);
         apu.stereo_data.left[apu.stereo_data.index] = apu_high_pass_filter(left, &cap_l);
-        if (MAX_NUM_SAMPLES <= ++apu.stereo_data.index)
+        if (NUM_AUDIO_SAMPLES_PER_FRAME <= ++apu.stereo_data.index)
         {
-            emulator_wait_for_data_collection();
+            emulator_cb_audio_ready();
             apu.stereo_data.index = 0;
         }
     }

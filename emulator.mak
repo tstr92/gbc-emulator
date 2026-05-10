@@ -20,7 +20,12 @@
 TARGET?=windows
 OUTDIR=.release_$(TARGET)
 DEBUG?=0
+ACTIVATE_TRACE?=1
 PER_PIXEL_DRAW?=0
+
+# 0=RGBA, 1=ARGB, 2=ABGR
+PIXEL_FORMAT?=0
+SET_ALPHA?=0
 
 #-----------------------------------------------------------------------------#
 #                    Stuff to be executed unconditionally                     #
@@ -53,6 +58,7 @@ endif
 
 ifeq ($(TARGET),android)
 	CC = aarch64-linux-android21-clang
+	SLC = "D:\\B4A\\SimpleLibraryCompiler\\LibraryCompiler.exe"
 endif
 
 #-----------------------------------------------------------------------------#
@@ -69,12 +75,18 @@ SRC = \
 		serial.c \
 		apu.c \
 		ppu.c \
-		trace.c \
-		ppu_debug.c
+		trace.c
 
 ifeq ($(TARGET),windows)
 	VPATH += src/windows
-	SRC += main.c
+	SRC += \
+			main.c \
+			ppu_debug.c
+endif
+
+ifeq ($(TARGET),android)
+	VPATH += src/android
+	SRC += jni.c
 endif
 
 OBJS = $(addprefix $(OUTDIR)/,$(SRC:.c=.o))
@@ -85,8 +97,11 @@ OBJS = $(addprefix $(OUTDIR)/,$(SRC:.c=.o))
 CFLAGS = \
 		$(addprefix -I,$(VPATH)) \
 		-DDEBUG=$(DEBUG) \
+		-DACTIVATE_TRACE=$(ACTIVATE_TRACE) \
 		-DUSE_0xE000_AS_PUTC_DEVICE=0 \
 		-DPER_PIXEL_DRAW=$(PER_PIXEL_DRAW) \
+		-DPIXEL_FORMAT=$(PIXEL_FORMAT) \
+		-DSET_ALPHA=$(SET_ALPHA) \
 		-ffunction-sections \
 		-fdata-sections \
 		-g \
@@ -99,6 +114,7 @@ LDFLAGS = \
 
 ifeq ($(TARGET),windows)
 	CFLAGS += \
+		-DTARGET_WINDOWS=1 \
 		-I$(SDL_INC) \
 		-I$(SDL_TTF_INC) \
 		-Wimplicit-fallthrough=3
@@ -112,6 +128,7 @@ endif
 
 ifeq ($(TARGET),android)
 	CFLAGS += \
+		-DTARGET_ANDROID=1 \
 		-fPIC
 	LDFLAGS += \
 		-shared
@@ -151,13 +168,18 @@ endif
 ifeq ($(TARGET),android)
 .PHONY: all so
 
-so: $(OUTDIR)/$(PROJECT).so
-all: so
+so: $(OUTDIR)/libCgbEmulator.so
+all: so jar
 
 # generate .so file from objects
-$(OUTDIR)/$(PROJECT).so: $(OBJS)
+$(OUTDIR)/libCgbEmulator.so: $(OBJS)
 	@echo "generating $@ ..."
 	$(CC) $(LDFLAGS) $(OBJS) -o $@
+
+.PHONY: jar
+jar: so
+	cp $(OUTDIR)/libCgbEmulator.so cgbEmu\additional\lib\arm64-v8a\libCgbEmulator.so
+	printf "\n" | cmd "/C $(SLC) cgbEmu %cd%/cgbEmu"
 endif
 
 .PHONY: clean

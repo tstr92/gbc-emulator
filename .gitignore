@@ -1,13 +1,22 @@
-sm83-test-data-master
+# vscode
+gbc_emulator.code-workspace
+
+# misc directories
 .doc
 .release**
 .gb
 .vscode
 .roms
-gbc_emulator.code-workspace
 assets
+
+# misc filetypes
 *.bin
 *.log
 .nogit
+*.so
+*.class
+
+# testing
+sm83-test-data-master
 savegame
 trace.txt
