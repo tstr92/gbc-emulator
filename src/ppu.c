@@ -673,7 +673,6 @@ void ppu_pixel_fetcher_do(void)
             y_offs = pixel_fetcher.tile_y_offset + pixel_fetcher.tile_hi_lo;
         }
 
-
         if (pixel_fetcher.bg_tile_number & 0x80)
         {
             data = p_tile_data[0x800 + (pixel_fetcher.bg_tile_number & 0x7F) * 16 + y_offs];
@@ -910,15 +909,14 @@ void gbc_ppu_tick(void)
                                                                   (((((uint32_t) color & 0x03e0) >>  5) << 3) << PX_COL_OFFS_G) |
                                                                   (((((uint32_t) color & 0x7c00) >> 10) << 3) << PX_COL_OFFS_B) |
                                                                   (((uint32_t) (SET_ALPHA & 0xff))            << PX_COL_OFFS_A) ;
-                            
-#if (0 != DEBUG_SHOW_WINDOW)
-                            /* draw green frame around window */
-                            if ((ppu.lcdc & LCDC_WINDOW_EN) && (((ppu.wx - 7) == ppu_state.lx) || (((ppu.wx - 7) <= ppu_state.lx) && (ppu.ly == ppu.wy))))
-                            {
-                                screen[ppu.ly * 160 + ppu_state.lx] = ((uint32_t) 0xFF) << PX_COL_OFFS_G;
-                            }
-#endif
                         }
+#if (0 != DEBUG_SHOW_WINDOW)
+                        /* draw green frame around window */
+                        if ((ppu.lcdc & LCDC_WINDOW_EN) && (((ppu.wx - 7) == ppu_state.lx) || (((ppu.wx - 7) <= ppu_state.lx) && (ppu.ly == ppu.wy))))
+                        {
+                            screen[ppu.ly * 160 + ppu_state.lx] = ((uint32_t) 0xFF) << PX_COL_OFFS_G;
+                        }
+#endif
 
                         emulator_debug_pixel_draw_event();
 
@@ -982,6 +980,7 @@ void gbc_ppu_tick(void)
         else
         {
             ppu.ly = 0;
+            pixel_fetcher.wy = 0;
             pixel_fetcher.scobj.wr = 0;
             pixel_fetcher.scobj.rd = 0;
             ppu_state.mode = mode2_oam_scan;
