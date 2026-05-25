@@ -33,11 +33,13 @@
 #define TITLE "Tib's GBC Emul"
 
 #define SCALING_FACTOR 3
-#define WIDTH (160 * SCALING_FACTOR)
-#define HEIGHT (144 * SCALING_FACTOR)
-#define MENU_OFFSET_X (WIDTH / 20)
-#define MENU_OFFSET_Y (HEIGHT / 20)
-#define FONTSIZE (HEIGHT / 16)
+#define WIDTH (160)
+#define HEIGHT (144)
+#define WIDTH_SCALED (WIDTH * SCALING_FACTOR)
+#define HEIGHT_SCALED (HEIGHT * SCALING_FACTOR)
+#define MENU_OFFSET_X (WIDTH_SCALED / 20)
+#define MENU_OFFSET_Y (HEIGHT_SCALED / 20)
+#define FONTSIZE (HEIGHT_SCALED / 16)
 
 #define MENU_TIMER_INTERVAL_MS 16
 
@@ -101,6 +103,7 @@ static volatile uint32_t gWasteTime = 0;
 #endif
 static char gSramFileName[FILENAME_MAX + 10] = "";
 static char gRtcFileName[FILENAME_MAX + 10] = "";
+static sdl_rsc_t sdl_rsc;
 
 static key_t keys[8] =
 {
@@ -143,6 +146,10 @@ static void audio_callback(void* userdata, Uint8* stream, int len)
     uint8_t r[1024], l[1024];
     size_t num_samples;
     emulator_get_audio_data(r, l, &num_samples);
+    if (NUM_AUDIO_SAMPLES_PER_FRAME != num_samples)
+    {
+        debug_printf("audio sampling error\n");
+    }
     size_t copy_len = (len < num_samples) ? len : num_samples;
     if (copy_len)
     {
@@ -160,18 +167,7 @@ static void audio_callback(void* userdata, Uint8* stream, int len)
         memset(stream, 0, len);
     }
 
-#if (0 == PER_PIXEL_DRAW)
-    SDL_Event event;
-    SDL_memset(&event, 0, sizeof(event));
-    event.type = gFrameDrawEvent;
-    SDL_PushEvent(&event);
-#endif
-
     SDL_LockMutex(gEmulatorDataMutex);
-    if (0 != gEmulatorDataCollected)
-    {
-        debug_printf("audio sampling error\n");
-    }
     gEmulatorDataCollected = 1;
     SDL_CondSignal(gEmulatorDataCond);  // Signal the waiting thread
     SDL_UnlockMutex(gEmulatorDataMutex);
@@ -212,7 +208,7 @@ static int init_sdl_rsc(sdl_rsc_t *p_sdl_rsc)
     }
 
     // Create a window
-    p_sdl_rsc->window = SDL_CreateWindow(TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WIDTH, HEIGHT, SDL_WINDOW_SHOWN);
+    p_sdl_rsc->window = SDL_CreateWindow(TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WIDTH_SCALED, HEIGHT_SCALED, SDL_WINDOW_SHOWN);
     if (!p_sdl_rsc->window)
     {
         fprintf(stderr, "SDL_CreateWindow Error: %s\n", SDL_GetError());
@@ -220,7 +216,7 @@ static int init_sdl_rsc(sdl_rsc_t *p_sdl_rsc)
     }
 
     // Create a renderer
-    p_sdl_rsc->renderer = SDL_CreateRenderer(p_sdl_rsc->window, -1, SDL_RENDERER_ACCELERATED);
+    p_sdl_rsc->renderer = SDL_CreateRenderer(p_sdl_rsc->window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (!p_sdl_rsc->renderer)
     {
         fprintf(stderr, "SDL_CreateRenderer Error: %s\n", SDL_GetError());
@@ -458,27 +454,33 @@ static void handle_menu(sdl_rsc_t *p_sdl_rsc, SDL_Event event)
 
 static void render(sdl_rsc_t *p_sdl_rsc)
 {
-    uint32_t screen[144][160];
+    void *pixels;
+    int pitch;
 
-    emulator_get_video_data((uint32_t*)screen);
-    
-    for (int y = 0; y < HEIGHT; y++)
-    {
-        for (int x = 0; x < WIDTH; x++)
-        {
-            int yy = y / SCALING_FACTOR;
-            int xx = x / SCALING_FACTOR;
-
-            p_sdl_rsc->screen_buffer[y * WIDTH + x] = screen[yy][xx];
-        }
+    SDL_LockTexture(p_sdl_rsc->texture, NULL, &pixels, &pitch);
+    uint8_t *dst = pixels;
+    for (int y = 0; y < HEIGHT; y++) {
+        memcpy(
+            dst + y * pitch,
+            p_sdl_rsc->screen_buffer + y * WIDTH,
+            WIDTH * sizeof(uint32_t)
+        );
     }
-
-    SDL_UpdateTexture(p_sdl_rsc->texture, NULL, p_sdl_rsc->screen_buffer, WIDTH * sizeof(Uint32));
+    SDL_UnlockTexture(p_sdl_rsc->texture);
 
     SDL_RenderClear(p_sdl_rsc->renderer);
     SDL_RenderCopy(p_sdl_rsc->renderer, p_sdl_rsc->texture, NULL, NULL);
     SDL_RenderPresent(p_sdl_rsc->renderer);
 
+    fps(p_sdl_rsc);
+
+    return;
+}
+
+void emulator_cb_push_video(uint32_t framebuffer[144][160])
+{
+    sdl_rsc_t *p_sdl_rsc = &sdl_rsc;
+    memcpy(p_sdl_rsc->screen_buffer, framebuffer, sizeof(uint32_t) * 144 * 160);//sizeof(framebuffer));
     return;
 }
 
@@ -584,6 +586,8 @@ static void save_sram_and_rtc(void)
 void emulator_cb_audio_ready(void)
 {
     // return;
+    ppu_debug_render();
+    render(&sdl_rsc);
     SDL_LockMutex(gEmulatorDataMutex);
     while (!gEmulatorDataCollected)
     {
@@ -817,13 +821,13 @@ int main(int argc, char* argv[])
         gSaveFileSize = 0;
     }
 
-    sdl_rsc_t sdl_rsc = (sdl_rsc_t)
+    sdl_rsc = (sdl_rsc_t)
     {
         .window        = NULL,
         .renderer      = NULL,
         .screen_buffer = NULL,
         .texture       = NULL,
-        .menu_overlay  = { MENU_OFFSET_X, MENU_OFFSET_Y, WIDTH - 2 * MENU_OFFSET_X, HEIGHT - 2 * MENU_OFFSET_Y },
+        .menu_overlay  = { MENU_OFFSET_X, MENU_OFFSET_Y, WIDTH_SCALED - 2 * MENU_OFFSET_X, HEIGHT_SCALED - 2 * MENU_OFFSET_Y },
     };
 
     if (init_sdl_rsc(&sdl_rsc))
@@ -857,17 +861,7 @@ int main(int argc, char* argv[])
             handle_menu(&sdl_rsc, e);
             fps(&sdl_rsc);
         }
-
-        if (e.type == gFrameDrawEvent)
-        {
-            if (!menu)
-            {
-                render(&sdl_rsc);
-                fps(&sdl_rsc);
-                ppu_debug_render();
-            }
-        }
-        else if ((e.type == SDL_KEYDOWN) && (SDLK_ESCAPE == e.key.keysym.sym))
+        if ((e.type == SDL_KEYDOWN) && (SDLK_ESCAPE == e.key.keysym.sym))
         {
             if (menu)
             {

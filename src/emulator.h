@@ -110,6 +110,8 @@ int emulator_cb_read_from_save_file(uint8_t *data, size_t size);
 
 void emulator_tick_cb(void);
 
+void emulator_cb_push_video(uint32_t screen[144][160]);
+
 /* Callback-Function that reads the current Button-states.
  * Use Defines GBC_JOYPAD_* to set joypad data.
  * This function should return immediately with a buffered

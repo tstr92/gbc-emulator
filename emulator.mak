@@ -115,7 +115,7 @@ CFLAGS = \
 		-ffunction-sections \
 		-fdata-sections \
 		-g \
-		-O0
+		-O3
 
 LDFLAGS = \
 		-ffunction-sections \

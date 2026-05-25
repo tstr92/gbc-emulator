@@ -294,9 +294,7 @@ static vram_t vram[2];
 static uint8_t obj_cram[64];
 static uint8_t bg_cram[64];
 
-static uint32_t screen0[144][160];
-static uint32_t screen1[144][160];
-static uint32_t *screen = (uint32_t *) &screen0[0][0];
+static uint32_t screen[144][160];
 
 volatile bool ppu_bp = false;
 volatile uint8_t breakx, breaky;
@@ -898,14 +896,14 @@ void gbc_ppu_tick(void)
                         {
                             uint8_t id = (pixel.color_id & 0x03) * 2; // 0, 2, 4, 6
                             uint8_t color_index = (palette & (COLOR_ID_MSK << id)) >> id;
-                            screen[ppu.ly * 160 + ppu_state.lx] = dmg_palette[color_index];
+                            screen[ppu.ly][ppu_state.lx] = dmg_palette[color_index];
                         }
                         else
                         {
                             uint16_t color = ((uint16_t) cram[(pixel.cgb_palette << 3) + (pixel.color_id << 1) + 0]) << 0 |
                                              ((uint16_t) cram[(pixel.cgb_palette << 3) + (pixel.color_id << 1) + 1]) << 8;
                             
-                            screen[ppu.ly * 160 + ppu_state.lx] = (((((uint32_t) color & 0x001f) >>  0) << 3) << PX_COL_OFFS_R) |
+                            screen[ppu.ly][ppu_state.lx] = (((((uint32_t) color & 0x001f) >>  0) << 3) << PX_COL_OFFS_R) |
                                                                   (((((uint32_t) color & 0x03e0) >>  5) << 3) << PX_COL_OFFS_G) |
                                                                   (((((uint32_t) color & 0x7c00) >> 10) << 3) << PX_COL_OFFS_B) |
                                                                   (((uint32_t) (SET_ALPHA & 0xff))            << PX_COL_OFFS_A) ;
@@ -914,7 +912,7 @@ void gbc_ppu_tick(void)
                         /* draw green frame around window */
                         if ((ppu.lcdc & LCDC_WINDOW_EN) && (((ppu.wx - 7) == ppu_state.lx) || (((ppu.wx - 7) <= ppu_state.lx) && (ppu.ly == ppu.wy))))
                         {
-                            screen[ppu.ly * 160 + ppu_state.lx] = ((uint32_t) 0xFF) << PX_COL_OFFS_G;
+                            screen[ppu.ly][ppu_state.lx] = ((uint32_t) 0xFF) << PX_COL_OFFS_G;
                         }
 #endif
 
@@ -949,12 +947,8 @@ void gbc_ppu_tick(void)
 
     if ((0 == ppu_state.line_dot_cnt) && (144 == ppu.ly))
     {
-        screen = ((&screen0[0][0] == screen) ? &screen1[0][0] : &screen0[0][0]);
+        emulator_cb_push_video(screen);
         BUS_SET_IRQ(IRQ_VBLANK);
-#if (0 != PER_PIXEL_DRAW)
-        memset(screen0, 0xff, sizeof(screen0));
-        memset(screen1, 0xff, sizeof(screen1));
-#endif
     }
 
     /* check for end of scanline */
@@ -1302,18 +1296,7 @@ void gbc_ppu_set_memory(uint16_t addr, uint8_t val)
 
 void emulator_get_video_data(uint32_t *data)
 {
-#if (0 != PER_PIXEL_DRAW)
-    memcpy(data, screen, sizeof(screen0));
-#else
-    if (screen == &screen0[0][0])
-    {
-        memcpy(data, screen1, sizeof(screen1));
-    }
-    else
-    {
-        memcpy(data, screen0, sizeof(screen0));
-    }
-#endif
+    memcpy(data, screen, sizeof(screen));
 }
 
 void emulator_debug_get_ppu_data(uint8_t *p_bg_cram, uint8_t *p_obj_cram, uint8_t *p_vram_0, uint8_t *p_vram_1)
