@@ -80,7 +80,29 @@ static inline void inc_tb_idx(void)
     }
 }
 
-static void save_trace(void)
+/*---------------------------------------------------------------------*
+ *  public functions                                                   *
+ *---------------------------------------------------------------------*/
+void trace_init(void)
+{
+}
+
+void trace_opcode(trace_data_t *p_trace_data)
+{
+    trace_data[tb_idx].type = tt_opcode_e;
+    trace_data[tb_idx].trace_data = *p_trace_data;
+    inc_tb_idx();
+}
+
+/* evt should have max TRACE_EVENT_STR_SIZE chars, there */
+void trace_event(char *evt)
+{
+    trace_data[tb_idx].type = tt_event_e;
+    snprintf(trace_data[tb_idx].event, sizeof(trace_data[tb_idx].event), "%s", evt);
+    inc_tb_idx();
+}
+
+void trace_save_data(void)
 {
     FILE *f = fopen("trace.txt", "w");
     if (f)
@@ -143,29 +165,6 @@ static void save_trace(void)
         }
         fclose(f);
     }
-}
-
-/*---------------------------------------------------------------------*
- *  public functions                                                   *
- *---------------------------------------------------------------------*/
-void trace_init(void)
-{
-    atexit(save_trace);
-}
-
-void trace_opcode(trace_data_t *p_trace_data)
-{
-    trace_data[tb_idx].type = tt_opcode_e;
-    trace_data[tb_idx].trace_data = *p_trace_data;
-    inc_tb_idx();
-}
-
-/* evt should have max TRACE_EVENT_STR_SIZE chars, there */
-void trace_event(char *evt)
-{
-    trace_data[tb_idx].type = tt_event_e;
-    snprintf(trace_data[tb_idx].event, sizeof(trace_data[tb_idx].event), "%s", evt);
-    inc_tb_idx();
 }
 #endif
 

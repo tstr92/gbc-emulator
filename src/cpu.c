@@ -1878,28 +1878,34 @@ void gbc_cpu_init(void)
 	   Power up states:
 	   https://gbdev.io/pandocs/Power_Up_Sequence.html
 	*/
-#if 0 /*cgb*/
-	cpu.af.a = 0x11;
-	cpu.af.f = FLAG_Z;
-	cpu.bc.bc = 0x00;
-	cpu.de.d = 0xFF;
-	cpu.de.e = 0x56;
-	cpu.hl.h = 0x00;
-	cpu.hl.l = 0x0D;
-	cpu.pc = 0x0100;
-	cpu.sp = 0xFFFE;
-#else /* dmg */
-	cpu.af.a = 0x01;
-	cpu.af.f = 0;
-	cpu.bc.b = 0xff;
-	cpu.bc.c = 0x13;
-	cpu.de.d = 0x00;
-	cpu.de.e = 0xc1;
-	cpu.hl.h = 0x00;
-	cpu.hl.l = 0x03;
-	cpu.pc = 0x0100;
-	cpu.sp = 0xFFFE;
-#endif
+	if (bus_DMG_mode())
+	{
+		/* dmg */
+		cpu.af.a = 0x01;
+		cpu.af.f = 0;
+		cpu.bc.b = 0xff;
+		cpu.bc.c = 0x13;
+		cpu.de.d = 0x00;
+		cpu.de.e = 0xc1;
+		cpu.hl.h = 0x00;
+		cpu.hl.l = 0x03;
+		cpu.pc = 0x0100;
+		cpu.sp = 0xFFFE;
+	}
+	else
+	{
+		/* cgb */
+		cpu.af.a = 0x11;
+		cpu.af.f = FLAG_Z;
+		cpu.bc.bc = 0x00;
+		cpu.de.d = 0xFF;
+		cpu.de.e = 0x56;
+		cpu.hl.h = 0x00;
+		cpu.hl.l = 0x0D;
+		cpu.pc = 0x0100;
+		cpu.sp = 0xFFFE;
+	}
+
 	return;
 }
 

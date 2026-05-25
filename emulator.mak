@@ -20,12 +20,22 @@
 TARGET?=windows
 OUTDIR=.release_$(TARGET)
 DEBUG?=0
-ACTIVATE_TRACE?=1
 PER_PIXEL_DRAW?=0
 
+
+ifeq ($(TARGET),windows)
+ACTIVATE_TRACE?=1
 # 0=RGBA, 1=ARGB, 2=ABGR
-PIXEL_FORMAT?=0
-SET_ALPHA?=0
+PIXEL_FORMAT=0
+SET_ALPHA=0
+endif
+
+ifeq ($(TARGET),android)
+ACTIVATE_TRACE?=0
+# 0=RGBA, 1=ARGB, 2=ABGR
+PIXEL_FORMAT=2
+SET_ALPHA=255
+endif
 
 #-----------------------------------------------------------------------------#
 #                    Stuff to be executed unconditionally                     #

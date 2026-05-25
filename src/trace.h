@@ -63,6 +63,7 @@ typedef struct
 void trace_init(void);
 void trace_opcode(trace_data_t *p_trace_data);
 void trace_event(char *evt); /* evt should have max TRACE_EVENT_STR_SIZE chars, no \n required as it is added by the tracer */
+void trace_save_data(void);
 
 /*---------------------------------------------------------------------*
  *  global data                                                        *

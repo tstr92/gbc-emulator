@@ -19,10 +19,13 @@
 
 #include "jni.h"
 #include "emulator.h"
+#include "bus.h"
 
 /*---------------------------------------------------------------------*
  *  local definitions                                                  *
  *---------------------------------------------------------------------*/
+static uint8_t speed = 10;
+
 
 /*---------------------------------------------------------------------*
  *  public data                                                        *
@@ -59,33 +62,40 @@ JNI_OnLoad(JavaVM *vm, void *reserved)
 }
 
 JNIEXPORT jint JNICALL
-Java_dev_tstr92_cgbemu_CgbCore_LoadGame(JNIEnv *env, jclass clazz, jbyteArray rom, jbyteArray ram)
+Java_dev_tstr92_cgbemu_CgbCore_LoadGame(JNIEnv *env, jclass clazz, jbyteArray rom, jbyteArray ram, jbyteArray rtc)
 {
     (void) env;
     (void) clazz;
-    (void) rom;
-    (void) ram;
 
-    // jsize romLength = (*env)->GetArrayLength(env, rom);
-    // jbyte *romBytes = (*env)->GetByteArrayElements(env, rom, NULL);
-    // jsize ramLength = (*env)->GetArrayLength(env, ram);
-    // jbyte *ramBytes = (*env)->GetByteArrayElements(env, ram, NULL);
+    jsize romLength = (*env)->GetArrayLength(env, rom);
+    jbyte *romBytes = (*env)->GetByteArrayElements(env, rom, NULL);
+    jsize ramLength = (*env)->GetArrayLength(env, ram);
+    jbyte *ramBytes = (*env)->GetByteArrayElements(env, ram, NULL);
+    jsize rtcLength = (*env)->GetArrayLength(env, rtc);
+    jbyte *rtcBytes = (*env)->GetByteArrayElements(env, rtc, NULL);
 
-    // if ((!romBytes) || (ramBytes))
-    // {
-    //     return (jint) !0;
-    // }
+    if ((!romBytes) || (0 == romLength))
+    {
+        return (jint) !0;
+    }
 
-    extern uint8_t Tetris[];
-    extern size_t TetrisSize;
-    int result = emulator_load_game(Tetris, TetrisSize, NULL, 0, NULL);
+    uint8_t * _ram = (0 < ramLength) ? (uint8_t *) ramBytes : NULL;
+    rtc_t* _rtc = (sizeof(rtc_t) == rtcLength) ? (rtc_t *) rtcBytes : NULL;
+    int result = emulator_load_game((uint8_t *)romBytes, (size_t)romLength, _ram, (size_t)ramLength, _rtc);
 
-    // int result = emulator_load_game((uint8_t *)romBytes, (size_t)romLength, (uint8_t *)ramBytes, (size_t)ramLength, NULL);
-
-    // (*env)->ReleaseByteArrayElements(env, rom, romBytes, 0);
-    // (*env)->ReleaseByteArrayElements(env, ram, ramBytes, 0);
+    (*env)->ReleaseByteArrayElements(env, rom, romBytes, 0);
+    (*env)->ReleaseByteArrayElements(env, ram, ramBytes, 0);
+    (*env)->ReleaseByteArrayElements(env, rtc, rtcBytes, 0);
 
     return (jint) result;
+}
+
+JNIEXPORT void JNICALL
+Java_dev_tstr92_cgbemu_CgbCore_EmulatorSetSpeed(JNIEnv *env, jclass clazz, jbyte _speed)
+{
+    (void) env;
+    (void) clazz;
+    speed = (uint8_t) _speed;
 }
 
 JNIEXPORT void JNICALL
@@ -97,11 +107,28 @@ Java_dev_tstr92_cgbemu_CgbCore_EmulatorRun(JNIEnv *env, jclass clazz)
 }
 
 JNIEXPORT void JNICALL
+Java_dev_tstr92_cgbemu_CgbCore_BusTick(JNIEnv *env, jclass clazz)
+{
+    (void) env;
+    (void) clazz;
+    bus_tick();
+}
+
+JNIEXPORT void JNICALL
 Java_dev_tstr92_cgbemu_CgbCore_EmulatorStop(JNIEnv *env, jclass clazz)
 {
     (void) env;
     (void) clazz;
     emulator_stop();
+}
+
+JNIEXPORT jstring JNICALL
+Java_dev_tstr92_cgbemu_CgbCore_GetCartridgeTitle(JNIEnv *env, jclass clazz)
+{
+    (void) clazz;
+    char buffer[20];
+    bus_get_title(buffer, sizeof(buffer));
+    return (*env)->NewStringUTF(env, buffer);
 }
 
 // JNIEXPORT jobject JNICALL
@@ -151,6 +178,46 @@ Java_dev_tstr92_cgbemu_CgbCore_GetScreen(JNIEnv *env, jclass clazz)
 
     (*env)->SetIntArrayRegion(env, jScreen, 0, CGB_SCREEN_WIDTH * CGB_SCREEN_HEIGTH, (jint*)screen);
     return jScreen;
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_dev_tstr92_cgbemu_CgbCore_BusGetSram(JNIEnv *env, jclass clazz)
+{
+    sram_t *p_sram = bus_get_sram();
+    if (!p_sram)
+    {
+        return NULL;
+    }
+    jbyteArray sram = (*env)->NewByteArray(env, sizeof(sram_t));
+    if (!sram)
+    {
+        return NULL;
+    }
+    (*env)->SetByteArrayRegion(env, sram, 0, sizeof(sram_t), (jbyte*)p_sram);
+    return sram;
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_dev_tstr92_cgbemu_CgbCore_BusGetRtc(JNIEnv *env, jclass clazz)
+{
+    jbyteArray rtc;
+
+    rtc_t *p_rtc = bus_get_rtc();
+    
+    if (p_rtc)
+    {
+        rtc = (*env)->NewByteArray(env, sizeof(rtc_t));
+        if (rtc)
+        {
+            (*env)->SetByteArrayRegion(env, rtc, 0, sizeof(rtc_t), (jbyte*)p_rtc);
+        }
+    }
+    else
+    {
+        rtc = (*env)->NewByteArray(env, 0);
+    }
+
+    return rtc;
 }
 
 /*---------------------------------------------------------------------*
@@ -272,7 +339,7 @@ uint8_t gbc_joypad_buttons_cb(void)
 
 uint8_t emulator_get_speed(void)
 {
-    return 10; /* 100% */
+    return speed;
 }
 
 
@@ -283,14 +350,6 @@ void emulator_cb_write_to_save_file(const uint8_t *data, size_t size, char *name
 int emulator_cb_read_from_save_file(uint8_t *data, size_t size)
 {
     return 1; /* error */
-}
-
-void emulator_cb_save_sram(const uint8_t *data, size_t length)
-{
-}
-
-void emulator_cb_save_rtc(const rtc_t *p_rtc)
-{
 }
 
 void emulator_tick_cb(void)

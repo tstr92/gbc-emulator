@@ -906,10 +906,10 @@ void gbc_ppu_tick(void)
                             uint16_t color = ((uint16_t) cram[(pixel.cgb_palette << 3) + (pixel.color_id << 1) + 0]) << 0 |
                                              ((uint16_t) cram[(pixel.cgb_palette << 3) + (pixel.color_id << 1) + 1]) << 8;
                             
-                            screen[ppu.ly * 160 + ppu_state.lx] = ((((uint32_t) color & 0x001f) >>  0) << 3) << PX_COL_OFFS_R |
-                                                                  ((((uint32_t) color & 0x03e0) >>  5) << 3) << PX_COL_OFFS_G |
-                                                                  ((((uint32_t) color & 0x7c00) >> 10) << 3) << PX_COL_OFFS_B |
-                                                                  ((uint32_t) (SET_ALPHA & 0xff))            << PX_COL_OFFS_A ;
+                            screen[ppu.ly * 160 + ppu_state.lx] = (((((uint32_t) color & 0x001f) >>  0) << 3) << PX_COL_OFFS_R) |
+                                                                  (((((uint32_t) color & 0x03e0) >>  5) << 3) << PX_COL_OFFS_G) |
+                                                                  (((((uint32_t) color & 0x7c00) >> 10) << 3) << PX_COL_OFFS_B) |
+                                                                  (((uint32_t) (SET_ALPHA & 0xff))            << PX_COL_OFFS_A) ;
                             
 #if (0 != DEBUG_SHOW_WINDOW)
                             /* draw green frame around window */

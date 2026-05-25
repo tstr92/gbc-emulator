@@ -17,7 +17,9 @@ public class CgbCore
     private static AudioTrack at;
     private static final int SAMPLE_RATE = 32768;
     private static byte buttons;
-    private static Thread emulatorCoreThread;
+    // private static Thread emulatorCoreThread;
+    private static Boolean run;
+    private static Boolean running;
 
     /*---------------------------------------------------------------------*
      *  Init                                                               *
@@ -46,19 +48,41 @@ public class CgbCore
             AudioTrack.MODE_STREAM
         );
 
-        emulatorCoreThread = new Thread(() -> EmulatorRun());
+        // emulatorCoreThread = new Thread(() -> EmulatorThread());
+        run = false;
+        running = false;
     }
-    
+
+    /*---------------------------------------------------------------------*
+     *  Java Functions                                                     *
+     *---------------------------------------------------------------------*/
+    private static void EmulatorThread()
+    {
+        running = true;
+        while (run)
+        {
+            BusTick();
+        }
+        at.pause();
+        running = false;
+        log("exit thread");
+    }
+
     /*---------------------------------------------------------------------*
      *  Native Functions to be called from Java                            *
      *---------------------------------------------------------------------*/
-    private static native void EmulatorRun();
-    private static native void EmulatorStop();
+    private static native void BusTick();
+    private static native void EmulatorSetSpeed(byte speed);
+    public native String GetCartridgeTitle();
+    public native byte[] BusGetSram();
+    public native byte[] BusGetRtc();
+    // private static native void EmulatorRun();
+    // private static native void EmulatorStop();
     
     /*---------------------------------------------------------------------*
      *  Native Functions to be called from B4A                             *
      *---------------------------------------------------------------------*/
-    public static native int LoadGame(byte[] rom, byte[] ram);
+    public static native int LoadGame(byte[] rom, byte[] ram, byte[] rtc);
     public static native int[] GetScreen();
 
     /*---------------------------------------------------------------------*
@@ -93,24 +117,66 @@ public class CgbCore
      *---------------------------------------------------------------------*/
     public void startEmulatorThread()
     {
-        emulatorCoreThread.start();
-        at.play();
+        if (!running)
+        {
+            run = true;
+            new Thread(() -> EmulatorThread()).start();
+            at.play();
+        }
+        // emulatorCoreThread.start();
+        // at.play();
+    }
+    public void stopEmulatorThread()
+    {
+        if (running)
+        {
+            run = false;
+            while(running)
+            {
+                try
+                {
+                    Thread.sleep(10);
+                }
+                catch (InterruptedException e)
+                {
+
+                }
+            }
+        }
+        // at.stop();
+        // EmulatorStop();
     }
     public void EmulatorPause()
     {
-        at.pause();
+        if (running)
+        {
+            at.pause();
+        }
     }
     public void EmulatorResume()
     {
-        at.play();
-    }
-    public void EmulatorDestroy()
-    {
-        at.stop();
-        EmulatorStop();
+        if (running)
+        {
+            at.play();
+        }
     }
     public void setButtons(byte b)
     {
         buttons = b;
+    }
+    public void setSpeed(int s)
+    {
+        if (10 > s)
+        {
+            EmulatorSetSpeed((byte) 10);
+        }
+        else if (20 < s)
+        {
+            EmulatorSetSpeed((byte) 20);
+        }
+        else
+        {
+            EmulatorSetSpeed((byte) s);
+        }
     }
 }

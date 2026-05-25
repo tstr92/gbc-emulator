@@ -64,7 +64,11 @@ bool bus_DMG_mode(void);
 uint8_t bus_get_memory(uint16_t addr);
 void bus_set_memory(uint16_t addr, uint8_t val);
 int bus_init_memory(uint8_t *rom, size_t rom_size, uint8_t *sram, size_t sram_size, rtc_t *p_rtc);
-int bus_load_game(char *fileName);
+void bus_get_title(char *pTitle, size_t len);
+
+
+sram_t *bus_get_sram(void);
+rtc_t *bus_get_rtc(void);
 
 void bus_stop_instr_cb(void);
 void bus_HBlank_cb(void);

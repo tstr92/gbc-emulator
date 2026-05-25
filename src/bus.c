@@ -69,6 +69,7 @@ typedef struct
 	uint8_t cartridge_type;
 	size_t cartridge_ram_size;
 	size_t cartridge_rom_size;
+	char cartridge_title[17];
 
 	uint8_t rp;
 
@@ -160,7 +161,6 @@ static uint8_t rtc_latch;
  *---------------------------------------------------------------------*/
 static int bus_check_cartridge_header(cartridge_header_t *pHeader);
 static void set_file_ext(char *fname, char *ext, size_t buffer_len);
-static void bus_save_sram_and_rtc(void);
 static inline void bus_dma_cpy(uint16_t dst, uint16_t src, uint16_t len);
 static void bus_oam_dma_tick(void);
 static void bus_write_mbc(uint16_t addr, uint8_t val);
@@ -226,30 +226,6 @@ int bus_check_cartridge_header(cartridge_header_t *pHeader)
 	debug_printf("      global_chksum: %04x\n", pHeader->global_chksum           );
 
 	return 1;
-}
-
-static void bus_save_sram_and_rtc(void)
-{
-	const uint8_t mbcs_with_rtc[] = {0x0F, 0x10, 0x11, 0x12, 0x13};
-	bool has_rtc = false;
-
-	emulator_cb_save_sram(&bus.ext_ram[0][0], sizeof(bus.ext_ram));
-
-	for (int i = 0; i < sizeof(mbcs_with_rtc)/sizeof(mbcs_with_rtc[0]); i++)
-	{
-		if (bus.cartridge_type == mbcs_with_rtc[i])
-		{
-			has_rtc = true;
-			break;
-		}
-	}
-
-	if (has_rtc)
-	{
-		emulator_cb_save_rtc(&bus.rtc);
-	}
-
-	return;
 }
 
 static inline void bus_dma_cpy(uint16_t dst, uint16_t src, uint16_t len)
@@ -965,6 +941,7 @@ int bus_init_memory(uint8_t *p_rom, size_t rom_size, uint8_t *p_sram, size_t sra
 			bus.cartridge_ram_size = bus_ram_size_from_header(&header);
 			bus.cartridge_rom_size = bus_rom_size_from_header(&header);
 			bus.dmg_mode = (0 == (header.GBC_flag & 0x80));
+			snprintf(bus.cartridge_title, 17, "%s", header.title_0);
 		}
 	}
 
@@ -981,13 +958,37 @@ int bus_init_memory(uint8_t *p_rom, size_t rom_size, uint8_t *p_sram, size_t sra
 		{
 			memcpy(&bus.rtc, p_rtc, sizeof(rtc_t));
 		}
-
-		atexit(bus_save_sram_and_rtc);
 	}
 
 	return error;
 }
 
+void bus_get_title(char *pTitle, size_t len)
+{
+	snprintf(pTitle, len, "%s", bus.cartridge_title);
+}
+
+sram_t *bus_get_sram(void)
+{
+	return (sram_t *) &bus.ext_ram[0][0];
+}
+
+rtc_t *bus_get_rtc(void)
+{
+	const uint8_t mbcs_with_rtc[] = {0x0F, 0x10, 0x11, 0x12, 0x13};
+	rtc_t *p_rtc = NULL;
+
+	for (int i = 0; i < sizeof(mbcs_with_rtc)/sizeof(mbcs_with_rtc[0]); i++)
+	{
+		if (bus.cartridge_type == mbcs_with_rtc[i])
+		{
+			p_rtc = &bus.rtc;
+			break;
+		}
+	}
+	
+	return p_rtc;
+}
 
 void gbc_bus_write_internal_state(void)
 {

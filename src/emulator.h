@@ -52,6 +52,12 @@ typedef struct
 	uint8_t latch[5];
 } rtc_t;
 
+typedef struct
+{
+	uint8_t sram[16][8*1024];
+} sram_t;
+
+
 #if (PIXEL_FORMAT == PIXEL_FORMAT_RGBA)
 #define PX_COL_OFFS_R (24)
 #define PX_COL_OFFS_G (16)
@@ -101,8 +107,6 @@ int emulator_load_save_file(void);
  */
 void emulator_cb_write_to_save_file(const uint8_t *data, size_t size, char *name);
 int emulator_cb_read_from_save_file(uint8_t *data, size_t size);
-void emulator_cb_save_sram(const uint8_t *data, size_t length);
-void emulator_cb_save_rtc(const rtc_t *p_rtc);
 
 void emulator_tick_cb(void);
 

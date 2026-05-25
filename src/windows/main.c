@@ -23,6 +23,8 @@
 #include <time.h>
 #include "debug.h"
 #include "emulator.h"
+#include "bus.h"
+#include "trace.h"
 #include "ppu_debug.h"
 
 /*---------------------------------------------------------------------*
@@ -125,6 +127,7 @@ static void   render              (sdl_rsc_t *p_sdl_rsc);
 static void   fps                 (sdl_rsc_t *p_sdl_rsc);
 static int    save_emulator_state (char *fname);
 static int    get_time_string     (char *str, size_t size);
+static void   save_sram_and_rtc   (void);
 
 /*---------------------------------------------------------------------*
  *  private functions                                                  *
@@ -545,6 +548,36 @@ static int get_time_string(char *str, size_t size)
         1900+t->tm_year, t->tm_mon, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
 }
 
+static void save_sram_and_rtc(void)
+{
+    sram_t *p_sram = bus_get_sram();
+    rtc_t *p_rtc = bus_get_rtc();
+
+    if (NULL != p_sram)
+    {
+        FILE *f;
+        f = fopen(gSramFileName, "wb");
+        if (f)
+        {
+            fwrite(p_sram, 1, sizeof(sram_t), f);
+            fclose(f);
+        }
+    }
+
+    if (NULL != p_rtc)
+    {
+        FILE *f;
+        f = fopen(gRtcFileName, "wb");
+        if (f)
+        {
+            fwrite(p_rtc, 1, sizeof(rtc_t), f);
+            fclose(f);
+        }
+    }
+
+    return;
+}
+
 /*---------------------------------------------------------------------*
  *  Emulator Callbacks                                                 *
  *---------------------------------------------------------------------*/
@@ -619,28 +652,6 @@ int emulator_cb_read_from_save_file(uint8_t *data, size_t size)
         }
     }
     return ret;
-}
-
-void emulator_cb_save_sram(const uint8_t *data, size_t length)
-{
-    FILE *f;
-    f = fopen(gSramFileName, "wb");
-    if (f)
-    {
-        fwrite(data, 1, length, f);
-        fclose(f);
-    }
-}
-
-void emulator_cb_save_rtc(const rtc_t *p_rtc)
-{
-    FILE *f;
-    f = fopen(gRtcFileName, "wb");
-    if (f)
-    {
-        fwrite(p_rtc, 1, sizeof(rtc_t), f);
-        fclose(f);
-    }
 }
 
 void emulator_tick_cb(void)
@@ -830,6 +841,11 @@ int main(int argc, char* argv[])
 
     SDL_Thread* emulator_thread = SDL_CreateThread(emulator_thread_fn, "EmulatorThread", NULL);
     SDL_PauseAudioDevice(sdl_rsc.audio_device, 0); // Start playing
+
+    atexit(save_sram_and_rtc);
+#if (0 != ACTIVATE_TRACE)
+    atexit(trace_save_data);
+#endif
 
     // Main loop
     SDL_Event e;
