@@ -1016,6 +1016,7 @@ void bus_init(void)
 void bus_tick(void)
 {
 	static uint8_t emulation_speed_cnt = 0;
+	static uint8_t dmg_cycle_cnt_error = 0;
 	uint32_t cycle_cnt;
 	uint32_t dmg_cycle_cnt = 0;
 
@@ -1032,13 +1033,21 @@ void bus_tick(void)
 	}
 
 	/* PPU always runs at "normal speed" */
+	cycle_cnt += dmg_cycle_cnt_error;
+	dmg_cycle_cnt_error = cycle_cnt & 1;
 	dmg_cycle_cnt = (bus.key1 & KEY1_DOUBLE_SPEED) ? (cycle_cnt >> 1) : cycle_cnt;
 	for (int i = 0; i < dmg_cycle_cnt; i++)
 	{
 		gbc_ppu_tick();
+	}
 
+	for (int i = 0; i < dmg_cycle_cnt; i++)
+	{
 		bus_rtc_tick();
+	}
 
+	for (int i = 0; i < dmg_cycle_cnt; i++)
+	{
 		/* throttle APU to always run at 4MHz, even if emulator runs at higher speed
 		*  -> we stay at 60 fps
 		*  -> audio pitch stays correct
