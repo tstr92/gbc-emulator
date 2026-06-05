@@ -163,22 +163,22 @@ Java_dev_tstr92_cgbemu_CgbCore_GetCartridgeTitle(JNIEnv *env, jclass clazz)
 //     return result;
 // }
 
-JNIEXPORT jintArray JNICALL
-Java_dev_tstr92_cgbemu_CgbCore_GetScreen(JNIEnv *env, jclass clazz)
-{
-    uint32_t screen[CGB_SCREEN_HEIGTH][CGB_SCREEN_WIDTH];
+// JNIEXPORT jintArray JNICALL
+// Java_dev_tstr92_cgbemu_CgbCore_GetScreen(JNIEnv *env, jclass clazz)
+// {
+//     uint32_t screen[CGB_SCREEN_HEIGTH][CGB_SCREEN_WIDTH];
 
-    emulator_get_video_data((uint32_t*) screen);
+//     emulator_get_video_data((uint32_t*) screen);
 
-    jintArray jScreen = (*env)->NewIntArray(env, CGB_SCREEN_WIDTH * CGB_SCREEN_HEIGTH);
-    if (!jScreen)
-    {
-        return NULL;
-    }
+//     jintArray jScreen = (*env)->NewIntArray(env, CGB_SCREEN_WIDTH * CGB_SCREEN_HEIGTH);
+//     if (!jScreen)
+//     {
+//         return NULL;
+//     }
 
-    (*env)->SetIntArrayRegion(env, jScreen, 0, CGB_SCREEN_WIDTH * CGB_SCREEN_HEIGTH, (jint*)screen);
-    return jScreen;
-}
+//     (*env)->SetIntArrayRegion(env, jScreen, 0, CGB_SCREEN_WIDTH * CGB_SCREEN_HEIGTH, (jint*)screen);
+//     return jScreen;
+// }
 
 JNIEXPORT jbyteArray JNICALL
 Java_dev_tstr92_cgbemu_CgbCore_BusGetSram(JNIEnv *env, jclass clazz)
@@ -296,6 +296,42 @@ void emulator_cb_audio_ready(void)
 
     (*env)->DeleteLocalRef(env, arrL);
     (*env)->DeleteLocalRef(env, arrR);
+    (*env)->DeleteLocalRef(env, cls);
+
+    return;
+}
+
+void emulator_cb_push_video(uint32_t framebuffer[144][160])
+{
+    static uint32_t local_framebuffer[144][160];
+
+    JNIEnv *env = getJNIEnv();
+    if (!env)
+    {
+        return;
+    }
+
+    jclass cls = (*env)->FindClass(env, "dev/tstr92/cgbemu/CgbCore");
+    if (!cls)
+    {
+        return;
+    }
+
+    jmethodID mid = (*env)->GetStaticMethodID(env, cls, "push_video", "([I)V");
+    if (!mid)
+    {
+        (*env)->DeleteLocalRef(env, cls);
+        return;
+    }
+
+    memcpy(local_framebuffer, framebuffer, sizeof(uint32_t) * 144 * 160);
+
+    jintArray jFramebuffer = (*env)->NewIntArray(env, 144 * 160);
+    (*env)->SetIntArrayRegion(env, jFramebuffer, 0, 144 * 160, (const jint*) local_framebuffer);
+
+    (*env)->CallStaticVoidMethod(env, cls, mid, jFramebuffer);
+
+    (*env)->DeleteLocalRef(env, jFramebuffer);
     (*env)->DeleteLocalRef(env, cls);
 
     return;

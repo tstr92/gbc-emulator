@@ -20,6 +20,7 @@ public class CgbCore
     // private static Thread emulatorCoreThread;
     private static Boolean run;
     private static Boolean running;
+    public static int[] framebuffer;
 
     /*---------------------------------------------------------------------*
      *  Init                                                               *
@@ -47,6 +48,8 @@ public class CgbCore
             bufferSize,
             AudioTrack.MODE_STREAM
         );
+
+        framebuffer = new int[160 * 144];
 
         // emulatorCoreThread = new Thread(() -> EmulatorThread());
         run = false;
@@ -83,7 +86,7 @@ public class CgbCore
      *  Native Functions to be called from B4A                             *
      *---------------------------------------------------------------------*/
     public static native int LoadGame(byte[] rom, byte[] ram, byte[] rtc);
-    public static native int[] GetScreen();
+    // public static native int[] GetScreen();
 
     /*---------------------------------------------------------------------*
      *  Java Functions to be called from C                                 *
@@ -101,6 +104,18 @@ public class CgbCore
 
     public static void push_audio(byte[] audio_l, byte[] audio_r)
     {
+        
+        while (at.getPlayState() == AudioTrack.PLAYSTATE_PAUSED)
+        {
+            try
+            {
+                Thread.sleep(10);
+            }
+            catch (InterruptedException e)
+            {
+
+            }
+        }
         int samples = audio_l.length;
         byte[] interleaved = new byte[samples * 2];
         for (int i = 0; i < samples; i++)
@@ -109,6 +124,11 @@ public class CgbCore
             interleaved[i*2 + 1] = audio_r[i];
         }
         at.write(interleaved, 0, interleaved.length);
+    }
+
+    public static void push_video(int[] fb)
+    {
+        framebuffer = fb;
         ba.raiseEventFromDifferentThread(inst.ba.activity, null, 0, "draw", false, null);
     }
 
