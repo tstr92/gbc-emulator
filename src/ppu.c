@@ -600,14 +600,6 @@ void ppu_pixel_fetcher_do(void)
                             /* no more pixels to remove ... */
                             break;
                         }
-                        else if (ppu_state.x_discard_count)
-                        {
-                            /* maybe the upper layer state machine already wants to discard some pixels due to viewport offsets.
-                             * Lets not discard pixels twice.
-                             * todo: is this correct?
-                             */
-                            ppu_state.x_discard_count--;
-                        }
                     }
                 }
             }
@@ -852,7 +844,11 @@ void gbc_ppu_tick(void)
                 {
                     if (0 != ppu_state.x_discard_count)
                     {
-                        if (ppu_pixel_fifo_pop(&pixel_fetcher.bg_fifo , &pixel))
+                        if (pixel_fetcher.window_was_drawn)
+                        {
+                            ppu_state.x_discard_count--;
+                        }
+                        else if (ppu_pixel_fifo_pop(&pixel_fetcher.bg_fifo , &pixel))
                         {
                             (void) ppu_pixel_fifo_pop(&pixel_fetcher.obj_fifo, &pixel);
                             ppu_state.x_discard_count--;
