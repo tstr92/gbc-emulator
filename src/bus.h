@@ -61,6 +61,7 @@
 void bus_init(void);
 void bus_tick(void);
 bool bus_DMG_mode(void);
+bool bus_double_speed_mode(void);
 uint8_t bus_get_memory(uint16_t addr);
 void bus_set_memory(uint16_t addr, uint8_t val);
 int bus_init_memory(uint8_t *rom, size_t rom_size, uint8_t *sram, size_t sram_size, rtc_t *p_rtc);

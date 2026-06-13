@@ -419,8 +419,8 @@ static uint8_t cpu_handle_opcode(void)
 	case OPC_STOP:
 	{
 		TRACE(2);
-		cpu.stopped = true;
-		cpu.halted = true;
+		// cpu.stopped = true;
+		// cpu.halted = true;
 		cycle_cnt = 4;
 		cpu.pc += 2;
 		gbc_timer_diva_reset();

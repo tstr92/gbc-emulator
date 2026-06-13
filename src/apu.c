@@ -97,8 +97,6 @@
 #define TIMER_ADDR_DIV   0xFF04
 #define TIMER_GET_DIV() gbc_timer_get_memory(TIMER_ADDR_DIV);
 
-#define DIV_APU_BIT (1<<5)
-
 #define CH12_PERIOD_PRESCALER          4  /*  4 MHz /  4 =   1.000 MHz */
 #define CH3_PERIOD_PRESCALER           2  /*  4 MHz /  2 =   2.000 MHz */
 #define CH4_LFSR_PRESCALER             16 /*  4 MHz / 16 = 262.144 kHz */
@@ -553,7 +551,7 @@ static uint8_t apu_high_pass_filter(uint8_t in, uint8_t *p_capacitor)
     out = (in_local - *p_capacitor) / (1<<20);   // / 1M
     *p_capacitor = (in_local - out * 1042954);   // 99.4638 % of 1M
 
-    return in;//out;
+    return out;
 }
 
 static void gbc_apu_frequency_debug_do(frequency_debug_t *this)
@@ -595,12 +593,14 @@ void gbc_apu_tick(void)
     static uint8_t last_div = 0;
     static uint8_t sampling_timer = 0;
     uint8_t div;
+    uint8_t div_apu_bit;
     bool div_apu_512Hz;
     uint8_t left, right;
 
+    div_apu_bit = bus_double_speed_mode() ? (1<<5) : (1<<4);
+
     div = TIMER_GET_DIV();
-    div_apu_512Hz = !!((last_div & DIV_APU_BIT) ^ (div & DIV_APU_BIT));
-    // div_apu_512Hz = ((last_div & DIV_APU_BIT) && !(div & DIV_APU_BIT));
+    div_apu_512Hz = !!((last_div & div_apu_bit) ^ (div & div_apu_bit));
     last_div = div;
     
     apu_ch12_tick(&ch1, div_apu_512Hz);
@@ -805,7 +805,7 @@ void gbc_apu_set_memory(uint16_t addr, uint8_t val)
                 case CH12_DC_75_PERCENT  : ch1.dc_pattern = DC_PATTERN_75_0; break;
                 default: break;
             }
-ch1.length_timer = (val & CH_LENGTH_TIMER_MSK);
+            ch1.length_timer = (val & CH_LENGTH_TIMER_MSK);
         }
         break;
 
@@ -824,6 +824,8 @@ ch1.length_timer = (val & CH_LENGTH_TIMER_MSK);
         case APU_ADDR_CH1_PERIOD_LOW:
         {
             apu.ch1_period_low = val;
+            ch1.period &= 0xFF00;
+            ch1.period |= val;
         }
         break;
 
@@ -831,6 +833,8 @@ ch1.length_timer = (val & CH_LENGTH_TIMER_MSK);
         {
             apu.ch1_period_high_ctrl = val;
             ch1.length_enable = (0 != (val & CH_LENGTH_EN));
+            ch1.period &= 0x00FF;
+            ch1.period |= (((uint16_t) (val & CH123_PERIOD_HIGH_MSK)) << 8);
             if (val & CH_TRIGGER)
             {
                 ch1.running = true;
@@ -839,7 +843,6 @@ ch1.length_timer = (val & CH_LENGTH_TIMER_MSK);
                 ch1.period_sweep_pace = (apu.ch1_sweep & CH12_SWEEP_PACE_MSK) >> CH12_SWEEP_PACE_POS;
                 ch1.period_sweep_dir_subtract = (0 != (apu.ch1_sweep & CH12_SWEEP_DIR_SUBTRACT_MSK));
                 ch1.period_sweep_step = (apu.ch1_sweep & CH12_SWEEP_STEP_MSK);
-                ch1.period = (uint16_t) apu.ch1_period_low + (((uint16_t) apu.ch1_period_high_ctrl & CH123_PERIOD_HIGH_MSK) << 8);
                 ch1.volume = (apu.ch1_vol_envelope & CH124_INITIAL_VOLUME_MSK) >> CH124_INITIAL_VOLUME_POS;
                 ch1.envelope_dir_increase = (0 != (apu.ch1_vol_envelope & CH124_ENV_DIR_INC_MSK));
                 ch1.envelope_sweep_pace = (apu.ch1_vol_envelope & CH124_ENV_SWEEP_PACE_MSK);
@@ -914,6 +917,8 @@ ch1.length_timer = (val & CH_LENGTH_TIMER_MSK);
         case APU_ADDR_CH2_PERIOD_LOW:
         {
             apu.ch2_period_low = val;
+            ch2.period &= 0xFF00;
+            ch2.period |= val;
         }
         break;
 
@@ -921,12 +926,13 @@ ch1.length_timer = (val & CH_LENGTH_TIMER_MSK);
         {
             apu.ch2_period_high_ctrl = val;
             ch2.length_enable = (0 != (val & CH_LENGTH_EN));
+            ch2.period &= 0x00FF;
+            ch2.period |= (((uint16_t) (val & CH123_PERIOD_HIGH_MSK)) << 8);
             if (val & CH_TRIGGER)
             {
                 ch2.running = true;
     
                 /* latch parameters */
-                ch2.period = (uint16_t) apu.ch2_period_low + (((uint16_t) apu.ch2_period_high_ctrl & CH123_PERIOD_HIGH_MSK) << 8);
                 ch2.volume = (apu.ch2_vol_envelope & CH124_INITIAL_VOLUME_MSK) >> CH124_INITIAL_VOLUME_POS;
                 ch2.envelope_dir_increase = (0 != (apu.ch2_vol_envelope & CH124_ENV_DIR_INC_MSK));
                 ch2.envelope_sweep_pace = (apu.ch2_vol_envelope & CH124_ENV_SWEEP_PACE_MSK);
@@ -974,7 +980,6 @@ ch1.length_timer = (val & CH_LENGTH_TIMER_MSK);
         case APU_ADDR_CH3_LENGTH_TIM:
         {
             apu.ch3_length_tim = val;
-            ch3.length_timer = val;
         }
         break;
 
@@ -993,6 +998,8 @@ ch1.length_timer = (val & CH_LENGTH_TIMER_MSK);
         case APU_ADDR_CH3_PERIOD_LOW:
         {
             apu.ch3_period_low = val;
+            ch3.period &= 0xFF00;
+            ch3.period |= val;
         }
         break;
 
@@ -1000,13 +1007,11 @@ ch1.length_timer = (val & CH_LENGTH_TIMER_MSK);
         {
             apu.ch3_period_high_ctrl = val;
             ch3.length_enable = (0 != (val & CH_LENGTH_EN));
+            ch3.period &= 0x00FF;
+            ch3.period |= (((uint16_t) (val & CH123_PERIOD_HIGH_MSK)) << 8);
             if (val & CH_TRIGGER)
             {
                 ch3.running = true;
-    
-                /* latch parameters */
-                ch3.period = (uint16_t) apu.ch3_period_low + (((uint16_t) apu.ch3_period_high_ctrl & CH123_PERIOD_HIGH_MSK) << 8);
-                ch3.length_timer = apu.ch3_length_tim;
                 
                 /* reset length-timer if it is expired */
                 if (0 == ch3.length_timer)
@@ -1016,8 +1021,7 @@ ch1.length_timer = (val & CH_LENGTH_TIMER_MSK);
                 }
     
                 /* reset internal states */
-                ch3.period_counter = 0;
-                ch3.period_prescaler = 0;
+                ch3.period_counter = ch3.period;
                 ch3.wave_sample_select = 1; /* hardware quirk */
 
                 if (!ch3.dac_en)
@@ -1068,7 +1072,7 @@ ch1.length_timer = (val & CH_LENGTH_TIMER_MSK);
 
         case APU_ADDR_CH4_CTRL:
         {
-                apu.ch4_ctrl = val;
+            apu.ch4_ctrl = val;
             ch4.length_enable = (0 != (val & CH_LENGTH_EN));
             if (val & CH_TRIGGER)
             {
@@ -1125,12 +1129,12 @@ ch1.length_timer = (val & CH_LENGTH_TIMER_MSK);
         {
             if (!ch3.running)
             {
-                    wave_ram[addr & 0xF] = val;
+                wave_ram[addr & 0xF] = val;
             }
         }
         break;
 
-            case 0xFF15:
+        case 0xFF15:
         case 0xFF1F:
         case 0xFF27 ... 0xFF2F:
         case APU_ADDR_PCM12:

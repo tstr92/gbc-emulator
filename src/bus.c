@@ -436,7 +436,7 @@ static void bus_write_mbc5(uint16_t addr, uint8_t val)
 			{
 				bus.ext_ram_enabled = true;
 			}
-			else if (0x00 == (val & 0x0F))
+			else
 			{
 				bus.ext_ram_enabled = false;
 			}
@@ -1132,13 +1132,21 @@ bool bus_DMG_mode(void)
 	return bus.dmg_mode;
 }
 
+bool bus_double_speed_mode(void)
+{
+	return (0 != (bus.key1 & KEY1_DOUBLE_SPEED));
+}
+
 void bus_stop_instr_cb(void)
 {
-	debug_printf("stop!\n");
-	if (bus.dmg_mode && (bus.key1 & KEY1_SWITCH_ARMED))
+	if (!bus.dmg_mode && (bus.key1 & KEY1_SWITCH_ARMED))
 	{
 		bus.key1 ^= KEY1_DOUBLE_SPEED;
 		bus.key1 &= ~KEY1_SWITCH_ARMED;
+	}
+	else
+	{
+		DBG_ERROR("STOP Instruction without speed switch");
 	}
 }
 
