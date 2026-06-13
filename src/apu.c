@@ -551,7 +551,7 @@ static uint8_t apu_high_pass_filter(uint8_t in, uint8_t *p_capacitor)
     out = (in_local - *p_capacitor) / (1<<20);   // / 1M
     *p_capacitor = (in_local - out * 1042954);   // 99.4638 % of 1M
 
-    return out;
+    return in;//out;
 }
 
 static void gbc_apu_frequency_debug_do(frequency_debug_t *this)
