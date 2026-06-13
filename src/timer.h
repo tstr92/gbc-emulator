@@ -44,6 +44,7 @@ void gbc_timer_set_memory(uint16_t addr, uint8_t val);
 
 
 void gbc_tim_write_internal_state(void);
+size_t gbc_tim_get_internal_state_size(void);
 int gbc_tim_set_internal_state(void);
 
 /*---------------------------------------------------------------------*

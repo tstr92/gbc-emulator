@@ -968,6 +968,61 @@ void bus_get_title(char *pTitle, size_t len)
 	snprintf(pTitle, len, "%s", bus.cartridge_title);
 }
 
+void bus_add_rtc_seconds(uint32_t seconds)
+{
+	uint16_t dh, d, h, m, s;
+	s = seconds;
+	dh = 0;
+
+	d = s / (60*60*24);
+	s %= (60*60*24);
+	h = s / (60*60);
+	s %= (60*60);
+	m = s / 60;
+	s %= 60;
+
+	bus.rtc.seconds += s;
+	if (59 < bus.rtc.seconds)
+	{
+		bus.rtc.seconds -= 60;
+		m += 1;
+	}
+
+	bus.rtc.minutes += m;
+	if (59 < bus.rtc.minutes)
+	{
+		bus.rtc.minutes -= 60;
+		h += 1;
+	}
+
+	bus.rtc.hours += h;
+	if (23 < bus.rtc.hours)
+	{
+		bus.rtc.hours -= 24;
+		d += 1;
+	}
+
+	d += bus.rtc.days_low;
+	while (255 < d)
+	{
+		dh += 1;
+		d -= 255;
+	}
+	bus.rtc.days_low = d;
+
+	while (dh)
+	{
+		bus.rtc.days_hi_ctrl = (bus.rtc.days_hi_ctrl + 1) & 0xC1;
+		if (0 == (bus.rtc.days_hi_ctrl & 1))
+		{
+			bus.rtc.days_hi_ctrl |= RTC_BIT_DAY_COUNTER_CARRY;
+		}
+		dh--;
+	}
+
+	return;
+}
+
 sram_t *bus_get_sram(void)
 {
 	return (sram_t *) &bus.ext_ram[0][0];
@@ -996,6 +1051,10 @@ void gbc_bus_write_internal_state(void)
 	return;
 }
 
+size_t gbc_bus_get_internal_state_size(void)
+{
+	return sizeof(bus_t);
+}
 
 int gbc_bus_set_internal_state(void)
 {

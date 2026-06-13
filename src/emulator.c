@@ -115,29 +115,40 @@ void emulator_write_save_file(void)
 	gbc_tim_write_internal_state();
 }
 
+size_t emulator_get_save_file_size(void)
+{
+    return (size_t) (
+        gbc_cpu_get_internal_state_size() +
+        gbc_bus_get_internal_state_size() +
+        gbc_ppu_get_internal_state_size() +
+        gbc_apu_get_internal_state_size() +
+        gbc_tim_get_internal_state_size()
+    );
+}
+
 int emulator_load_save_file(void)
 {
 	int ret = 0;
 
 	if (0 == ret)
 	{
-		gbc_cpu_set_internal_state();
+		ret = gbc_cpu_set_internal_state();
 	}
 	if (0 == ret)
 	{
-		gbc_bus_set_internal_state();
+		ret = gbc_bus_set_internal_state();
 	}
 	if (0 == ret)
 	{
-		gbc_ppu_set_internal_state();
+		ret = gbc_ppu_set_internal_state();
 	}
 	if (0 == ret)
 	{
-		gbc_apu_set_internal_state();
+		ret = gbc_apu_set_internal_state();
 	}
 	if (0 == ret)
 	{
-		gbc_tim_set_internal_state();
+		ret = gbc_tim_set_internal_state();
 	}
 
 	return ret;

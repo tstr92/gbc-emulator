@@ -39,6 +39,7 @@ uint64_t gbc_cpu_get_cycle_cnt(void);
 void gbc_cpu_stall(uint32_t num_ticks);
 
 void gbc_cpu_write_internal_state(void);
+size_t gbc_cpu_get_internal_state_size(void);
 int gbc_cpu_set_internal_state(void);
 
 /*---------------------------------------------------------------------*

@@ -101,6 +101,7 @@ uint8_t emulator_get_speed(void);
 void emulator_cb_audio_ready(void);
 
 void emulator_write_save_file(void);
+size_t emulator_get_save_file_size(void);
 int emulator_load_save_file(void);
 
 /* 

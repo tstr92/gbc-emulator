@@ -65,6 +65,7 @@ uint8_t bus_get_memory(uint16_t addr);
 void bus_set_memory(uint16_t addr, uint8_t val);
 int bus_init_memory(uint8_t *rom, size_t rom_size, uint8_t *sram, size_t sram_size, rtc_t *p_rtc);
 void bus_get_title(char *pTitle, size_t len);
+void bus_add_rtc_seconds(uint32_t seconds);
 
 
 sram_t *bus_get_sram(void);
@@ -74,6 +75,7 @@ void bus_stop_instr_cb(void);
 void bus_HBlank_cb(void);
 
 void gbc_bus_write_internal_state(void);
+size_t gbc_bus_get_internal_state_size(void);
 int gbc_bus_set_internal_state(void);
 
 /*---------------------------------------------------------------------*

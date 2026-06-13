@@ -1166,6 +1166,11 @@ void gbc_apu_write_internal_state(void)
     return;
 }
 
+size_t gbc_apu_get_internal_state_size(void)
+{
+	return sizeof(apu_mem_t) + sizeof(ch12_t) + sizeof(ch12_t) + sizeof(ch3_t) + sizeof(ch4_t);
+}
+
 int gbc_apu_set_internal_state(void)
 {
     int ret = 0;

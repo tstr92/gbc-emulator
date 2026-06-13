@@ -220,6 +220,32 @@ Java_dev_tstr92_cgbemu_CgbCore_BusGetRtc(JNIEnv *env, jclass clazz)
     return rtc;
 }
 
+JNIEXPORT void JNICALL
+Java_dev_tstr92_cgbemu_CgbCore_EmulatorSaveInternalState(JNIEnv *env, jclass clazz)
+{
+    (void) env;
+    (void) clazz;
+	emulator_write_save_file();
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_tstr92_cgbemu_CgbCore_EmulatorInternalStateSize(JNIEnv *env, jclass clazz)
+{
+    return (jint) emulator_get_save_file_size();
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_tstr92_cgbemu_CgbCore_EmulatorLoadInternalState(JNIEnv *env, jclass clazz)
+{
+    return (jint) emulator_load_save_file();
+}
+
+JNIEXPORT void JNICALL
+Java_dev_tstr92_cgbemu_CgbCore_AddSecondsToRtc(JNIEnv *env, jclass clazz, jint seconds)
+{
+    bus_add_rtc_seconds((uint32_t) seconds);
+}
+
 /*---------------------------------------------------------------------*
  *  Wrappers for Java-Functions to be called from C                    *
  *---------------------------------------------------------------------*/
@@ -303,8 +329,6 @@ void emulator_cb_audio_ready(void)
 
 void emulator_cb_push_video(uint32_t framebuffer[144][160])
 {
-    static uint32_t local_framebuffer[144][160];
-
     JNIEnv *env = getJNIEnv();
     if (!env)
     {
@@ -324,10 +348,8 @@ void emulator_cb_push_video(uint32_t framebuffer[144][160])
         return;
     }
 
-    memcpy(local_framebuffer, framebuffer, sizeof(uint32_t) * 144 * 160);
-
     jintArray jFramebuffer = (*env)->NewIntArray(env, 144 * 160);
-    (*env)->SetIntArrayRegion(env, jFramebuffer, 0, 144 * 160, (const jint*) local_framebuffer);
+    (*env)->SetIntArrayRegion(env, jFramebuffer, 0, 144 * 160, (const jint*) framebuffer);
 
     (*env)->CallStaticVoidMethod(env, cls, mid, jFramebuffer);
 
@@ -381,11 +403,65 @@ uint8_t emulator_get_speed(void)
 
 void emulator_cb_write_to_save_file(const uint8_t *data, size_t size, char *name)
 {
+    (void) name;
+    JNIEnv *env = getJNIEnv();
+    if (!env)
+    {
+        return;
+    }
+
+    jclass cls = (*env)->FindClass(env, "dev/tstr92/cgbemu/CgbCore");
+    if (!cls)
+    {
+        return;
+    }
+
+    jmethodID mid = (*env)->GetStaticMethodID(env, cls, "save_internal_state_cb", "([B)V");
+    if (!mid)
+    {
+        (*env)->DeleteLocalRef(env, cls);
+        return;
+    }
+
+    jbyteArray jData = (*env)->NewByteArray(env, size);
+    (*env)->SetByteArrayRegion(env, jData, 0, size, (const jbyte*) data);
+
+    (*env)->CallStaticVoidMethod(env, cls, mid, jData);
+
+    (*env)->DeleteLocalRef(env, jData);
+    (*env)->DeleteLocalRef(env, cls);
+    
+    return;
 }
 
 int emulator_cb_read_from_save_file(uint8_t *data, size_t size)
 {
-    return 1; /* error */
+    JNIEnv *env = getJNIEnv();
+    if (!env)
+    {
+        return 1;
+    }
+
+    jclass cls = (*env)->FindClass(env, "dev/tstr92/cgbemu/CgbCore");
+    if (!cls)
+    {
+        return 1;
+    }
+
+    jmethodID mid = (*env)->GetStaticMethodID(env, cls, "read_internal_state_cb", "(Ljava/nio/ByteBuffer;I)V");
+    if (!mid)
+    {
+        (*env)->DeleteLocalRef(env, cls);
+        return 1;
+    }
+
+    jobject byteBuffer = (*env)->NewDirectByteBuffer(env, data, size);
+    (*env)->CallStaticVoidMethod(env, cls, mid, byteBuffer, (jint)size);
+
+    (*env)->DeleteLocalRef(env, byteBuffer);
+    (*env)->DeleteLocalRef(env, cls);
+
+    return 0;
 }
 
 void emulator_tick_cb(void)

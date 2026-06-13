@@ -183,6 +183,11 @@ void gbc_tim_write_internal_state(void)
 	return;
 }
 
+size_t gbc_tim_get_internal_state_size(void)
+{
+	return sizeof(tim_t);
+}
+
 int gbc_tim_set_internal_state(void)
 {
 	return emulator_cb_read_from_save_file((uint8_t*) &timer, sizeof(tim_t));

@@ -1313,6 +1313,11 @@ void gbc_ppu_write_internal_state(void)
     return;
 }
 
+size_t gbc_ppu_get_internal_state_size(void)
+{
+	return sizeof(ppu) + sizeof(ppu_state) + sizeof(vram) + sizeof(bg_cram) + sizeof(obj_cram);
+}
+
 int gbc_ppu_set_internal_state(void)
 {
     int ret = 0;

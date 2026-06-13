@@ -3,6 +3,9 @@ package dev.tstr92.cgbemu;
 import anywheresoftware.b4a.BA;
 import anywheresoftware.b4a.BA.ShortName;
 import android.media.AudioTrack;
+
+import java.nio.ByteBuffer;
+
 import android.media.AudioFormat;
 import android.media.AudioManager;
 
@@ -20,7 +23,11 @@ public class CgbCore
     // private static Thread emulatorCoreThread;
     private static Boolean run;
     private static Boolean running;
+    private static int SaveStateOffset;
+    private static int ReadDataOffset;
     public static int[] framebuffer;
+    public static byte[] EmulatorSaveState;
+    public static byte[] EmulatorLoadState;
 
     /*---------------------------------------------------------------------*
      *  Init                                                               *
@@ -79,6 +86,10 @@ public class CgbCore
     public native String GetCartridgeTitle();
     public native byte[] BusGetSram();
     public native byte[] BusGetRtc();
+    private native void EmulatorSaveInternalState();
+    private native int EmulatorInternalStateSize();
+    private native int EmulatorLoadInternalState();
+    public native void AddSecondsToRtc(int seconds);
     // private static native void EmulatorRun();
     // private static native void EmulatorStop();
     
@@ -91,18 +102,18 @@ public class CgbCore
     /*---------------------------------------------------------------------*
      *  Java Functions to be called from C                                 *
      *---------------------------------------------------------------------*/
-    public static void log(String msg)
+    private static void log(String msg)
     {
         // BA.Log("c: "+msg); // this works well, but below is a wotking example i might need to look up later.
         ba.raiseEventFromDifferentThread(ba.activity, null, 0, "c_log", false, new Object[]{ msg });
     }
 
-    public static byte get_buttons()
+    private static byte get_buttons()
     {
         return buttons;
     }
 
-    public static void push_audio(byte[] audio_l, byte[] audio_r)
+    private static void push_audio(byte[] audio_l, byte[] audio_r)
     {
         
         while (at.getPlayState() == AudioTrack.PLAYSTATE_PAUSED)
@@ -126,10 +137,25 @@ public class CgbCore
         at.write(interleaved, 0, interleaved.length);
     }
 
-    public static void push_video(int[] fb)
+    private static void push_video(int[] fb)
     {
         framebuffer = fb;
         ba.raiseEventFromDifferentThread(inst.ba.activity, null, 0, "draw", false, null);
+    }
+
+    private static void save_internal_state_cb(byte[] data)
+    {
+        System.arraycopy(data, 0, EmulatorSaveState, SaveStateOffset, data.length);
+        SaveStateOffset += data.length;
+    }
+
+    private static void read_internal_state_cb(ByteBuffer buffer, int size)
+    {
+        for (int i = 0; i < size; i++)
+        {
+            buffer.put(i, EmulatorLoadState[ReadDataOffset + i]); // or your logic
+        }
+        ReadDataOffset += size;
     }
 
     /*---------------------------------------------------------------------*
@@ -198,5 +224,18 @@ public class CgbCore
         {
             EmulatorSetSpeed((byte) s);
         }
+    }
+    public Boolean SaveGame()
+    {
+        EmulatorSaveState = new byte[EmulatorInternalStateSize()];
+        SaveStateOffset = 0;
+        EmulatorSaveInternalState();
+        return SaveStateOffset == EmulatorSaveState.length;
+    }
+    public Boolean LoadGameState(byte[] loadState)
+    {
+        EmulatorLoadState = loadState;
+        ReadDataOffset = 0;
+        return 0 == EmulatorLoadInternalState();
     }
 }

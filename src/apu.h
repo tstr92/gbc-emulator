@@ -43,6 +43,7 @@ uint8_t gbc_apu_get_memory(uint16_t addr);
 void gbc_apu_set_memory(uint16_t addr, uint8_t val);
 
 void gbc_apu_write_internal_state(void);
+size_t gbc_apu_get_internal_state_size(void);
 int gbc_apu_set_internal_state(void);
 
 /*---------------------------------------------------------------------*

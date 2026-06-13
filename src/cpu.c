@@ -1959,6 +1959,11 @@ void gbc_cpu_write_internal_state(void)
 	return;
 }
 
+size_t gbc_cpu_get_internal_state_size(void)
+{
+	return sizeof(sm83_t);
+}
+
 int gbc_cpu_set_internal_state(void)
 {
 	return emulator_cb_read_from_save_file((uint8_t*) &cpu, sizeof(sm83_t));

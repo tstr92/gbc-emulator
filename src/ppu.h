@@ -44,6 +44,7 @@ void gbc_ppu_set_memory(uint16_t addr, uint8_t val);
 
 
 void gbc_ppu_write_internal_state(void);
+size_t gbc_ppu_get_internal_state_size(void);
 int gbc_ppu_set_internal_state(void);
 
 /*---------------------------------------------------------------------*
