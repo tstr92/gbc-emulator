@@ -98,7 +98,7 @@ uint8_t gbc_joypad_get_memory(uint16_t addr)
     }
     else
     {
-        DBG_ERROR();
+        DBG_ERROR("invalid address");
     }
 
     return ret;
@@ -113,7 +113,7 @@ void gbc_joypad_set_memory(uint16_t addr, uint8_t val)
     }
     else
     {
-        DBG_ERROR();
+        DBG_ERROR("invalid address");
     }
 
     return;

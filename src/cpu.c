@@ -404,7 +404,7 @@ static uint8_t cpu_handle_opcode(void)
 	{
 	case OPC_NONE:
 	{
-		DBG_ERROR();
+		DBG_ERROR("invalid opcode");
 	}
 	break;
 
@@ -852,7 +852,7 @@ static uint8_t cpu_handle_opcode(void)
 			// no flags affected
 		}
 		break;
-		default: DBG_ERROR(); break;
+		default: DBG_ERROR("invalid opcode"); break;
 		}
 
 		cycle_cnt = duration;
@@ -1394,7 +1394,7 @@ static uint8_t cpu_handle_opcode(void)
 		case 1: bus_set_memory(cpu.de.de, cpu.af.a); break;
 		case 2: bus_set_memory(cpu.hl.hl++, cpu.af.a); break;
 		case 3: bus_set_memory(cpu.hl.hl--, cpu.af.a); break;
-		default: DBG_ERROR(); break;
+		default: DBG_ERROR("sanity check"); break;
 		}
 		cycle_cnt = 8;
 		cpu.pc += 1;
@@ -1412,7 +1412,7 @@ static uint8_t cpu_handle_opcode(void)
 		case 1: src = bus_get_memory(cpu.de.de); break;
 		case 2: src = bus_get_memory(cpu.hl.hl++); break;
 		case 3: src = bus_get_memory(cpu.hl.hl--); break;
-		default: DBG_ERROR(); break;
+		default: DBG_ERROR("sanity check"); break;
 		}
 		cpu.af.a = src;
 		cycle_cnt = 8;
@@ -1435,7 +1435,7 @@ static uint8_t cpu_handle_opcode(void)
 		case 1: cpu.de.de = d16; break;
 		case 2: cpu.hl.hl = d16; break;
 		case 3: cpu.sp = d16; break;
-		default: DBG_ERROR(); break;
+		default: DBG_ERROR("sanity check"); break;
 		}
 		cycle_cnt = 12;
 		cpu.pc += 3;
@@ -1537,7 +1537,7 @@ static uint8_t cpu_handle_opcode(void)
 		case 0: val = &cpu.bc.b; break;
 		case 1: val = &cpu.de.d; break;
 		case 2: val = &cpu.hl.h; break;
-		default: DBG_ERROR(); break;
+		default: DBG_ERROR("sanity check"); break;
 		}
 		eval_H_flag(*val, 1, false);
 		set_N_flag(false);
@@ -1559,7 +1559,7 @@ static uint8_t cpu_handle_opcode(void)
 		case 1: val = &cpu.de.e; break;
 		case 2: val = &cpu.hl.l; break;
 		case 3: val = &cpu.af.a; break;
-		default: DBG_ERROR(); break;
+		default: DBG_ERROR("sanity check"); break;
 		}
 		eval_H_flag(*val, 1, false);
 		set_N_flag(false);
@@ -1593,7 +1593,7 @@ static uint8_t cpu_handle_opcode(void)
 		case 1: cpu.de.de++; break;
 		case 2: cpu.hl.hl++; break;
 		case 3: cpu.sp++; break;
-		default: DBG_ERROR(); break;
+		default: DBG_ERROR("sanity check"); break;
 		}
 		cycle_cnt = 8;
 		cpu.pc += 1;
@@ -1610,7 +1610,7 @@ static uint8_t cpu_handle_opcode(void)
 		case 0: val = &cpu.bc.b; break;
 		case 1: val = &cpu.de.d; break;
 		case 2: val = &cpu.hl.h; break;
-		default: DBG_ERROR(); break;
+		default: DBG_ERROR("sanity check"); break;
 		}
 		eval_H_flag((uint8_t)*val, 1, true);
 		set_N_flag(true);
@@ -1632,7 +1632,7 @@ static uint8_t cpu_handle_opcode(void)
 		case 1: val = &cpu.de.e; break;
 		case 2: val = &cpu.hl.l; break;
 		case 3: val = &cpu.af.a; break;
-		default: DBG_ERROR(); break;
+		default: DBG_ERROR("sanity check"); break;
 		}
 		eval_H_flag(*val, 1, true);
 		set_N_flag(true);
@@ -1666,7 +1666,7 @@ static uint8_t cpu_handle_opcode(void)
 		case 1: cpu.de.de--; break;
 		case 2: cpu.hl.hl--; break;
 		case 3: cpu.sp--; break;
-		default: DBG_ERROR(); break;
+		default: DBG_ERROR("sanity check"); break;
 		}
 		cycle_cnt = 8;
 		cpu.pc += 1;
@@ -1753,7 +1753,7 @@ static uint8_t cpu_handle_opcode(void)
 	}
 	break;
 
-	default: DBG_ERROR(); break;
+	default: DBG_ERROR("invalid opcode"); break;
 	}
 
 	return cycle_cnt;

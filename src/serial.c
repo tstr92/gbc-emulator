@@ -70,7 +70,7 @@ uint8_t gbc_serial_get_memory(uint16_t addr)
         break;
 
         default:
-        DBG_ERROR();
+        DBG_ERROR("invalid address");
         break;
     }
 
@@ -92,7 +92,7 @@ void gbc_serial_set_memory(uint16_t addr, uint8_t val)
         break;
 
         default:
-        DBG_ERROR();
+        DBG_ERROR("invalid address");
         break;
     }
 }

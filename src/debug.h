@@ -22,7 +22,11 @@
 /*---------------------------------------------------------------------*
  *  global definitions                                                 *
  *---------------------------------------------------------------------*/
-#define DBG_ERROR() printf("Error: %s:%d\n", __FUNCTION__, __LINE__)
+#if TARGET_WINDOWS
+    #define DBG_ERROR(_msg) printf("Error: %s:%d\n%s\n\n", __FUNCTION__, __LINE__, _msg)
+#elif TARGET_ANDROID
+    #define DBG_ERROR(_msg) android_printf("Error: %s:%d\n%s\n\n", __FUNCTION__, __LINE__, _msg)
+#endif
 
 #if (0 < DEBUG)
     #if TARGET_WINDOWS

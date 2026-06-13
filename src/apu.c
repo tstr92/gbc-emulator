@@ -776,7 +776,7 @@ uint8_t gbc_apu_get_memory(uint16_t addr)
 
         default:
         {
-            DBG_ERROR();
+            DBG_ERROR("invalid address");
         }
         break;
     }
@@ -1142,7 +1142,7 @@ ch1.length_timer = (val & CH_LENGTH_TIMER_MSK);
 
         default:
         {
-            DBG_ERROR();
+            DBG_ERROR("invalid address");
         }
         break;
     }

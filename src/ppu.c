@@ -1144,7 +1144,7 @@ uint8_t gbc_ppu_get_memory(uint16_t addr)
         
         default:
         {
-            DBG_ERROR();
+            DBG_ERROR("invalid address");
         }
         break;
     }
@@ -1282,7 +1282,7 @@ void gbc_ppu_set_memory(uint16_t addr, uint8_t val)
         
         default:
         {
-            DBG_ERROR();
+            DBG_ERROR("invalid address");
         }
         break;
     }
