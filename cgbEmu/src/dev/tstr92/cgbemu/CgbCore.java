@@ -87,7 +87,7 @@ public class CgbCore
     public native byte[] BusGetSram();
     public native byte[] BusGetRtc();
     private native void EmulatorSaveInternalState();
-    private native int EmulatorInternalStateSize();
+    public native int EmulatorInternalStateSize();
     private native int EmulatorLoadInternalState();
     public native void AddSecondsToRtc(int seconds);
     // private static native void EmulatorRun();
