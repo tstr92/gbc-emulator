@@ -230,6 +230,8 @@ typedef enum
 
 typedef struct
 {
+    bool valid;
+
     /* bg data */
     pixel_fetcher_state_t bg_state;
     pixel_fifo_t bg_fifo;
@@ -371,6 +373,11 @@ static inline uint8_t ppu_pixel_fifo_num_empty_slots(pixel_fifo_t *pFifo)
  *---------------------------------------------------------------------*/
 void ppu_pixel_fetcher_do(void)
 {
+    if (!pixel_fetcher.valid)
+    {
+        return;
+    }
+
     if (pfs_suspended_e == pixel_fetcher.obj_state)
     {
         if (pixel_fetcher.scobj.wr > pixel_fetcher.scobj.rd)
@@ -821,6 +828,7 @@ void gbc_ppu_tick(void)
                 pixel_fetcher.obj_state = pfs_suspended_e;
                 pixel_fetcher.x = 0;
                 pixel_fetcher.window_was_drawn = false;
+                pixel_fetcher.valid = true;
                 
                 ppu_state.lx = 0;
                 ppu_state.pixel_delay = 12;
@@ -1342,6 +1350,8 @@ int gbc_ppu_set_internal_state(void)
     {
         emulator_cb_read_from_save_file((uint8_t*) &obj_cram, sizeof(obj_cram));
     }
+
+    pixel_fetcher.valid = false;
 
     return ret;
 }
