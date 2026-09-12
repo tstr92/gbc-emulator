@@ -456,7 +456,7 @@ void ppu_pixel_fetcher_do(void)
         int numPixels = 8 - ((ppu_state.lx + 8) - pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.x_pos);
         if (pixel_fetcher.scobj.sprites[pixel_fetcher.scobj.rd].obj_attr.x_flip)
         {
-            for (int i = 0; i <= (numPixels - 1); i++)
+            for (int i = (8 - numPixels); i < 8; i++)
             {
                 pixel = (pixel_t)
                 {
@@ -858,7 +858,6 @@ void gbc_ppu_tick(void)
                         }
                         else if (ppu_pixel_fifo_pop(&pixel_fetcher.bg_fifo , &pixel))
                         {
-                            (void) ppu_pixel_fifo_pop(&pixel_fetcher.obj_fifo, &pixel);
                             ppu_state.x_discard_count--;
                         }
                     }
