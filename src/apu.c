@@ -104,7 +104,7 @@
 #define CH_LENGTH_TIMER_PRESCALER      2  /* 512 Hz /  2 = 256.000  Hz */
 #define CH124_ENVELOPE_SWEEP_PRESCALER 8  /* 512 Hz /  8 =  64.000  Hz */
 #define CH123_PERIOD_OVERFLOW          0x800
-#define CH12_LENGTH_TIMER_OVERFLOW     64
+#define CH124_LENGTH_TIMER_OVERFLOW    64
 
 #define DC_PATTERN_12_5 (0b00000001)
 #define DC_PATTERN_25_0 (0b00000011)
@@ -357,7 +357,7 @@ static void apu_ch12_tick(ch12_t *chx, bool div_apu_512Hz)
             {
                 if (chx == &ch1) { gbc_apu_frequency_debug_do(&ch12_len_256); }
                 chx->length_timer_prescaler = 0;
-                if (CH12_LENGTH_TIMER_OVERFLOW <= ++chx->length_timer)
+                if (CH124_LENGTH_TIMER_OVERFLOW <= ++chx->length_timer)
                 {
                     chx->length_timer = 0;
                     chx->running = false;
@@ -490,7 +490,7 @@ static void apu_ch4_tick(bool div_apu_512Hz)
             if (CH_LENGTH_TIMER_PRESCALER <= ++ch4.length_timer_prescaler)
             {
                 ch4.length_timer_prescaler = 0;
-                if (64 == ++ch4.length_timer)
+                if (CH124_LENGTH_TIMER_OVERFLOW == ++ch4.length_timer)
                 {
                     ch4.running = false;
                 }
