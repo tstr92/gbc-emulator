@@ -463,7 +463,7 @@ static void apu_ch4_tick(bool div_apu_512Hz)
     {
         apu.audio_master_control |= AUDIO_MASTER_CONTROL_CH4_ON;
 
-        ch4.output = (0 == (ch4.lfsr & 0x01)) ? ch4.volume : 0;
+        ch4.output = (0 != (ch4.lfsr & 0x01)) ? ch4.volume : 0;
 
         /* LFSR Frequency */
         if (ch4.lfsr_prescaler <= ++ch4.lfsr_counter)
@@ -490,7 +490,7 @@ static void apu_ch4_tick(bool div_apu_512Hz)
             if (CH_LENGTH_TIMER_PRESCALER <= ++ch4.length_timer_prescaler)
             {
                 ch4.length_timer_prescaler = 0;
-                if (0 == ++ch4.length_timer)
+                if (64 == ++ch4.length_timer)
                 {
                     ch4.running = false;
                 }
@@ -1059,8 +1059,8 @@ void gbc_apu_set_memory(uint16_t addr, uint8_t val)
             uint8_t div = (val & CH4_LFSR_CLK_DIV_MSK);
             if (0 == div)
             {
-                // Divider = 0 is treated as 0.5, so we multiply by 0.5 = divide by 2 (-> shift + 1)
-                ch4.lfsr_prescaler = CH4_LFSR_PRESCALER << (shift + 1);
+                // Divider = 0 is treated as 0.5, so we multiply by 0.5 = divide by 2
+                ch4.lfsr_prescaler = (CH4_LFSR_PRESCALER / 2) << shift;
             }
             else
             {
@@ -1094,6 +1094,7 @@ void gbc_apu_set_memory(uint16_t addr, uint8_t val)
                 ch4.envelope_sweep_pace_counter = 0;
                 ch4.envelope_sweep_pace_prescaler = 0;
                 ch4.lfsr = 0;
+                ch4.lfsr_counter = 0;
                 
                 /* turn off ch4 if the volume is 0 and decreasing */
                 if ((0 == ch4.volume) && (false == ch4.envelope_dir_increase))
